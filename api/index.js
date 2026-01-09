@@ -115,10 +115,22 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Health check
 app.get('/api/health', async (req, res) => {
   try {
+    if (!pool) {
+      return res.status(503).json({ 
+        status: 'error', 
+        database: 'not_configured', 
+        error: 'DATABASE_URL is not set' 
+      });
+    }
     await pool.query('SELECT 1');
     res.json({ status: 'ok', database: 'connected' });
   } catch (error) {
-    res.status(500).json({ status: 'error', database: 'disconnected', error: error.message });
+    res.status(500).json({ 
+      status: 'error', 
+      database: 'disconnected', 
+      error: error.message,
+      code: error.code 
+    });
   }
 });
 

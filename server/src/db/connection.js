@@ -23,30 +23,40 @@ const sslConfig = isNeon
 if (!process.env.DATABASE_URL) {
   console.error('❌ DATABASE_URL environment variable is not set!');
   console.error('Please add DATABASE_URL to your .env file');
-  process.exit(1);
+  // Don't exit in serverless environments - let the error be caught by route handlers
+  if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
+    process.exit(1);
+  }
 }
 
-export const pool = new Pool({
+// Only create pool if DATABASE_URL is available
+export const pool = process.env.DATABASE_URL ? new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: sslConfig,
-  // Connection pool settings
-  max: 20, // Maximum number of clients in the pool
+  // Connection pool settings optimized for serverless
+  max: process.env.VERCEL ? 1 : 20, // Use 1 connection in serverless to avoid connection limits
   idleTimeoutMillis: 30000, // Close idle clients after 30 seconds
-  connectionTimeoutMillis: 2000, // Return an error after 2 seconds if connection could not be established
-});
+  connectionTimeoutMillis: 10000, // Increased timeout for serverless cold starts
+  // For serverless, we want to close connections quickly
+  ...(process.env.VERCEL && {
+    allowExitOnIdle: true,
+  }),
+}) : null;
 
-pool.on('connect', () => {
-  if (process.env.NODE_ENV !== 'test') {
-    console.log('✅ Connected to PostgreSQL database');
-  }
-});
+if (pool) {
+  pool.on('connect', () => {
+    if (process.env.NODE_ENV !== 'test') {
+      console.log('✅ Connected to PostgreSQL database');
+    }
+  });
 
-pool.on('error', (err) => {
-  console.error('❌ Database connection error:', err.message);
-  if (err.message.includes('SSL')) {
-    console.error('💡 Tip: Make sure your DATABASE_URL includes ?sslmode=require for Neon');
-  }
-  if (err.message.includes('timeout') || err.message.includes('ECONNREFUSED')) {
-    console.error('💡 Tip: Check if your Neon project is paused. Go to https://console.neon.tech to resume it');
-  }
-});
+  pool.on('error', (err) => {
+    console.error('❌ Database connection error:', err.message);
+    if (err.message.includes('SSL')) {
+      console.error('💡 Tip: Make sure your DATABASE_URL includes ?sslmode=require for Neon');
+    }
+    if (err.message.includes('timeout') || err.message.includes('ECONNREFUSED')) {
+      console.error('💡 Tip: Check if your Neon project is paused. Go to https://console.neon.tech to resume it');
+    }
+  });
+}

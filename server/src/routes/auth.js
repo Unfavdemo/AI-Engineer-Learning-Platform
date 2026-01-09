@@ -21,6 +21,20 @@ const loginSchema = z.object({
 // Register
 router.post('/register', async (req, res) => {
   try {
+    // Check if database is configured
+    if (!pool) {
+      return res.status(503).json({ 
+        error: 'Database is not configured. Please set DATABASE_URL environment variable.' 
+      });
+    }
+
+    // Check if JWT_SECRET is configured
+    if (!process.env.JWT_SECRET) {
+      return res.status(503).json({ 
+        error: 'Server configuration error: JWT_SECRET is not set. Please configure it in Vercel environment variables.' 
+      });
+    }
+
     const { email, password, name } = registerSchema.parse(req.body);
 
     // Check if user exists
@@ -79,6 +93,20 @@ router.post('/register', async (req, res) => {
 // Login
 router.post('/login', async (req, res) => {
   try {
+    // Check if database is configured
+    if (!pool) {
+      return res.status(503).json({ 
+        error: 'Database is not configured. Please set DATABASE_URL environment variable.' 
+      });
+    }
+
+    // Check if JWT_SECRET is configured
+    if (!process.env.JWT_SECRET) {
+      return res.status(503).json({ 
+        error: 'Server configuration error: JWT_SECRET is not set. Please configure it in Vercel environment variables.' 
+      });
+    }
+
     const { email, password } = loginSchema.parse(req.body);
 
     // Find user
@@ -118,17 +146,18 @@ router.post('/login', async (req, res) => {
     }
     console.error('Login error:', error);
     
-    // Check for missing JWT_SECRET
-    if (!process.env.JWT_SECRET) {
-      return res.status(500).json({ 
-        error: 'Server configuration error: JWT_SECRET is not set' 
+    
+    // Check for database connection errors
+    if (error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT' || error.message?.includes('timeout') || error.message?.includes('Connection terminated')) {
+      return res.status(503).json({ 
+        error: 'Database connection failed. Please check your DATABASE_URL and ensure your Neon project is not paused.' 
       });
     }
     
-    // Check for database connection errors
-    if (error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT' || error.message?.includes('timeout')) {
+    // Check for missing DATABASE_URL
+    if (error.message?.includes('DATABASE_URL') || !process.env.DATABASE_URL) {
       return res.status(503).json({ 
-        error: 'Database connection failed. Please try again later.' 
+        error: 'Database is not configured. Please set DATABASE_URL environment variable in Vercel.' 
       });
     }
     
