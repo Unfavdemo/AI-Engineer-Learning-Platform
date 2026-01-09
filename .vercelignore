@@ -1,0 +1,40 @@
+# Dependencies (installed by Vercel)
+node_modules/
+server/node_modules/
+
+# Development files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test files
+server/test-connections.js
+
+# Documentation (optional - can be included)
+# README.md
+# SETUP.md
+# TESTING.md
+# NEON_SETUP.md
+# IMPLEMENTATION_COMPLETE.md
+
+# Local environment files (Vercel uses their own env vars)
+.env
+.env.local
+.env.production.local
+
+# Build outputs (Vercel handles this)
+dist/
+build/
+server/dist/
+
+# Uploads directory (use cloud storage in production)
+server/uploads/

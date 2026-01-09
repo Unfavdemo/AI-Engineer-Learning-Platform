@@ -1,0 +1,409 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@custom-variant dark (&:is(.dark *));
+
+/* Design System - Professional Engineering Platform */
+/* Dark mode first, light mode optional */
+
+:root {
+  --font-size: 16px;
+  
+  /* Base Colors - Dark Mode (Default) */
+  --background: #1E1E1E; /* Charcoal background */
+  --foreground: #E0E0E0; /* Soft gray text */
+  --card: #252525; /* Card background */
+  --card-foreground: #E0E0E0;
+  --popover: #252525;
+  --popover-foreground: #E0E0E0;
+  
+  /* Primary Actions - Deep Blue */
+  --primary: #0070F3;
+  --primary-foreground: #FFFFFF;
+  
+  /* Secondary Elements */
+  --secondary: #2A2A2A;
+  --secondary-foreground: #E0E0E0;
+  
+  /* Muted/Subtle Elements */
+  --muted: #171717;
+  --muted-foreground: #888888;
+  
+  /* Accent */
+  --accent: #2A2A2A;
+  --accent-foreground: #E0E0E0;
+  
+  /* Status Colors */
+  --success: #28A745; /* Muted Green - Success states */
+  --warning: #FFC107; /* Soft Amber - Warnings, guidance */
+  --destructive: #D9534F; /* Muted Red - Errors, critical feedback */
+  --destructive-foreground: #FFFFFF;
+  
+  /* UI Elements */
+  --border: #2A2A2A;
+  --input: #1E1E1E;
+  --input-background: #1E1E1E;
+  --switch-background: #666666;
+  --ring: #0070F3;
+  
+  /* Typography */
+  --font-weight-medium: 500;
+  --font-weight-normal: 400;
+  
+  /* Charts (using status colors) */
+  --chart-1: #0070F3;
+  --chart-2: #28A745;
+  --chart-3: #FFC107;
+  --chart-4: #D9534F;
+  --chart-5: #888888;
+  
+  /* Spacing/Radius */
+  --radius: 0.625rem;
+  
+  /* Sidebar */
+  --sidebar: #171717;
+  --sidebar-foreground: #E0E0E0;
+  --sidebar-primary: #0070F3;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #252525;
+  --sidebar-accent-foreground: #E0E0E0;
+  --sidebar-border: #2A2A2A;
+  --sidebar-ring: #0070F3;
+}
+
+/* Light Mode (Optional) */
+:root:not(.dark) {
+  /* Base Colors - Light Mode */
+  --background: #FAFAFA; /* Off-white background */
+  --foreground: #1C1C1C; /* Charcoal text */
+  --card: #FFFFFF;
+  --card-foreground: #1C1C1C;
+  --popover: #FFFFFF;
+  --popover-foreground: #1C1C1C;
+  
+  /* Primary Actions - Deep Blue (same) */
+  --primary: #0070F3;
+  --primary-foreground: #FFFFFF;
+  
+  /* Secondary Elements */
+  --secondary: #F5F5F5;
+  --secondary-foreground: #1C1C1C;
+  
+  /* Muted/Subtle Elements */
+  --muted: #F0F0F0;
+  --muted-foreground: #666666;
+  
+  /* Accent */
+  --accent: #F5F5F5;
+  --accent-foreground: #1C1C1C;
+  
+  /* Status Colors (same) */
+  --success: #28A745;
+  --warning: #FFC107;
+  --destructive: #D9534F;
+  --destructive-foreground: #FFFFFF;
+  
+  /* UI Elements */
+  --border: #E0E0E0;
+  --input: #FFFFFF;
+  --input-background: #FFFFFF;
+  --switch-background: #CBD5E0;
+  --ring: #0070F3;
+  
+  /* Sidebar */
+  --sidebar: #FFFFFF;
+  --sidebar-foreground: #1C1C1C;
+  --sidebar-primary: #0070F3;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #F5F5F5;
+  --sidebar-accent-foreground: #1C1C1C;
+  --sidebar-border: #E0E0E0;
+  --sidebar-ring: #0070F3;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-input-background: var(--input-background);
+  --color-switch-background: var(--switch-background);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+/**
+ * Base typography. This is not applied to elements which have an ancestor with a Tailwind text class.
+ */
+@layer base {
+  :where(:not(:has([class*=' text-']), :not(:has([class^='text-'])))) {
+    h1 {
+      font-size: var(--text-2xl);
+      font-weight: var(--font-weight-medium);
+      line-height: 1.5;
+    }
+
+    h2 {
+      font-size: var(--text-xl);
+      font-weight: var(--font-weight-medium);
+      line-height: 1.5;
+    }
+
+    h3 {
+      font-size: var(--text-lg);
+      font-weight: var(--font-weight-medium);
+      line-height: 1.5;
+    }
+
+    h4 {
+      font-size: var(--text-base);
+      font-weight: var(--font-weight-medium);
+      line-height: 1.5;
+    }
+
+    label {
+      font-size: var(--text-base);
+      font-weight: var(--font-weight-medium);
+      line-height: 1.5;
+    }
+
+    button {
+      font-size: var(--text-base);
+      font-weight: var(--font-weight-medium);
+      line-height: 1.5;
+    }
+
+    input {
+      font-size: var(--text-base);
+      font-weight: var(--font-weight-normal);
+      line-height: 1.5;
+    }
+  }
+}
+
+html {
+  font-size: var(--font-size);
+}
+
+/* Standardized Button Styles */
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-[#0070F3] focus:ring-offset-2 focus:ring-offset-[#1E1E1E] disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none;
+  }
+
+  .btn-primary {
+    @apply bg-[#0070F3] text-white hover:bg-[#0060D9] active:bg-[#0052C7];
+  }
+
+  .btn-secondary {
+    @apply bg-[#252525] text-[#E0E0E0] border border-[#2A2A2A] hover:border-[#0070F3] hover:bg-[#2A2A2A];
+  }
+
+  .btn-success {
+    @apply bg-[#28A745] text-white hover:bg-[#218838] active:bg-[#1e7e34];
+  }
+
+  .btn-success-outline {
+    @apply bg-[#28A745] text-[#28A745] border border-[#28A745];
+    background-color: rgba(40, 167, 69, 0.2);
+    border-color: rgba(40, 167, 69, 0.3);
+  }
+
+  .btn-success-outline:hover {
+    background-color: rgba(40, 167, 69, 0.3);
+  }
+
+  .btn-warning {
+    background-color: rgba(255, 193, 7, 0.2);
+    color: #FFC107;
+    border: 1px solid rgba(255, 193, 7, 0.3);
+  }
+
+  .btn-warning:hover {
+    background-color: rgba(255, 193, 7, 0.3);
+  }
+
+  .btn-destructive {
+    @apply bg-[#D9534F] text-white hover:bg-[#c9302c] active:bg-[#ac2925];
+  }
+
+  .btn-ghost {
+    @apply bg-transparent text-[#E0E0E0] hover:bg-[#252525] border border-transparent;
+  }
+
+  .btn-link {
+    @apply bg-transparent text-[#0070F3] hover:text-[#0060D9] hover:underline p-0;
+  }
+
+  .btn-sm {
+    @apply h-8 px-3 py-1.5 text-xs;
+  }
+
+  .btn-md {
+    @apply h-10 px-4 py-2 text-sm;
+  }
+
+  .btn-lg {
+    @apply h-12 px-6 py-3 text-base;
+  }
+
+  .btn-icon {
+    @apply h-10 w-10 p-0;
+  }
+}
+
+/* Screen reader only utility */
+@layer utilities {
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+  }
+
+  .focus\:not-sr-only:focus {
+    position: static;
+    width: auto;
+    height: auto;
+    padding: inherit;
+    margin: inherit;
+    overflow: visible;
+    clip: unset;
+    white-space: normal;
+  }
+}
+
+/* Custom checkbox styles for Focus Areas */
+@layer components {
+  input[type="checkbox"][id^="focus-area-"] {
+    appearance: none;
+    width: 1rem;
+    height: 1rem;
+    border-radius: 0.125rem;
+    border: 2px solid #E0E0E0;
+    background-color: transparent;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  input[type="checkbox"][id^="focus-area-"]:hover {
+    border-color: #FFFFFF;
+    background-color: rgba(42, 42, 42, 0.5);
+  }
+
+  input[type="checkbox"][id^="focus-area-"]:checked {
+    background-color: #E0E0E0;
+    border-color: #E0E0E0;
+  }
+
+  input[type="checkbox"][id^="focus-area-"]:checked::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%) rotate(45deg);
+    width: 3px;
+    height: 8px;
+    border: solid #1E1E1E;
+    border-width: 0 2px 2px 0;
+  }
+
+  input[type="checkbox"][id^="focus-area-"]:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px #0070F3, 0 0 0 4px rgba(0, 112, 243, 0.1);
+  }
+
+  /* Custom checkbox styles for Notifications */
+  input[type="checkbox"][id^="notification-"] {
+    appearance: none;
+    width: 1rem;
+    height: 1rem;
+    border-radius: 0.125rem;
+    border: 2px solid #E0E0E0;
+    background-color: transparent;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  input[type="checkbox"][id^="notification-"]:hover {
+    border-color: #FFFFFF;
+    background-color: rgba(42, 42, 42, 0.5);
+  }
+
+  input[type="checkbox"][id^="notification-"]:checked {
+    background-color: #E0E0E0;
+    border-color: #E0E0E0;
+  }
+
+  input[type="checkbox"][id^="notification-"]:checked::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%) rotate(45deg);
+    width: 3px;
+    height: 8px;
+    border: solid #1E1E1E;
+    border-width: 0 2px 2px 0;
+  }
+
+  input[type="checkbox"][id^="notification-"]:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px #0070F3, 0 0 0 4px rgba(0, 112, 243, 0.1);
+  }
+}
