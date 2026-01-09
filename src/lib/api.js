@@ -25,6 +25,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  timeout: 30000, // 30 second timeout
 });
 
 // Add token to requests
@@ -66,8 +67,20 @@ api.interceptors.response.use(
     
     // Enhance error with more details for debugging
     if (!error.response) {
-      // Network error or server not reachable
-      error.message = error.message || 'Network error. Please check if the server is running.';
+      // Network error, timeout, or server not reachable
+      if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
+        error.message = 'Request timed out. The server is taking too long to respond.';
+      } else if (error.code === 'ERR_NETWORK' || error.message?.includes('Network Error')) {
+        error.message = 'Network error. Please check your internet connection and try again.';
+      } else {
+        error.message = error.message || 'Unable to connect to the server. Please try again later.';
+      }
+    } else if (error.response.status >= 500) {
+      // Server errors
+      error.message = error.response.data?.error?.message || 
+                     error.response.data?.error || 
+                     error.response.data?.message || 
+                     'Server error. Please try again later.';
     }
     
     return Promise.reject(error);

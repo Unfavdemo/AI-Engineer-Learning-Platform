@@ -44,7 +44,12 @@ export function Login() {
       // Extract error message from various possible error formats
       let errorMessage = 'An error occurred';
       
-      if (err.response?.data) {
+      // Handle timeout and network errors
+      if (err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
+        errorMessage = 'Request timed out. The server is taking too long to respond. Please try again.';
+      } else if (err.code === 'ERR_NETWORK' || err.message?.includes('Network Error')) {
+        errorMessage = 'Network error. Please check your internet connection.';
+      } else if (err.response?.data) {
         // Handle different error response formats
         if (typeof err.response.data.error === 'string') {
           errorMessage = err.response.data.error;
@@ -59,6 +64,7 @@ export function Login() {
         errorMessage = err.message;
       }
       
+      console.error('Login error:', err);
       setError(errorMessage);
     } finally {
       setLoading(false);
