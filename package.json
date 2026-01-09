@@ -1,6 +1,7 @@
 {
   "name": "ai-engineer-learning-platform",
   "version": "1.0.0",
+  "type": "module",
   "description": "AI Engineer Learning Platform - Full Stack Application",
   "scripts": {
     "dev": "concurrently \"npm run dev:client\" \"npm run dev:server\"",
@@ -13,7 +14,8 @@
     "start": "node server/dist/index.js",
     "db:migrate": "tsx server/db/migrate.js",
     "db:seed": "tsx server/db/seed.ts",
-    "test:connections": "node server/test-connections.js"
+    "test:connections": "node server/test-connections.js",
+    "test:login": "node test-login.js"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.14.2",

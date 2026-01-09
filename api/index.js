@@ -18,8 +18,6 @@ import { authenticateToken } from '../server/src/middleware/auth.js';
 import OpenAI from 'openai';
 
 // Load environment variables
-// In Vercel, environment variables are automatically available
-// But we still need to configure dotenv for local development
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const projectRoot = join(__dirname, '../');
@@ -98,7 +96,6 @@ const getFrontendUrl = () => {
     return `https://${process.env.VERCEL_URL}`;
   }
   if (process.env.VERCEL) {
-    // Vercel provides this automatically
     return `https://${process.env.VERCEL_URL}`;
   }
   return 'http://localhost:3000';
@@ -110,7 +107,6 @@ app.use(cors({
   credentials: true,
 }));
 
-// Body parser with error handling
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
@@ -123,10 +119,10 @@ app.use((err, req, res, next) => {
   next();
 });
 
-// Initialize routesMounted variable before using it in endpoints
+// Initialize routesMounted variable
 let routesMounted = false;
 
-// Simple test endpoint (no dependencies)
+// Simple test endpoint
 app.get('/api/test', (req, res) => {
   res.json({ 
     status: 'ok', 
@@ -144,7 +140,7 @@ app.get('/api/test', (req, res) => {
   });
 });
 
-// Debug endpoint for login route
+// Debug endpoint
 app.post('/api/auth/debug', (req, res) => {
   res.json({
     status: 'ok',
@@ -178,25 +174,18 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
-// Request logging middleware (for debugging)
+// Request logging middleware
 app.use((req, res, next) => {
-  console.log(`${req.method} ${req.path}`, {
+  console.log(`[REQUEST] ${req.method} ${req.path}`, {
+    originalUrl: req.originalUrl,
+    url: req.url,
     hasBody: !!req.body,
-    bodyKeys: req.body ? Object.keys(req.body) : [],
-    contentType: req.headers['content-type'],
     routesMounted,
   });
   next();
 });
 
-// Async error wrapper to catch unhandled promise rejections
-const asyncHandler = (fn) => (req, res, next) => {
-  Promise.resolve(fn(req, res, next)).catch(next);
-};
-
-// Routes - Vercel rewrites /api/* to /api, so we need to handle /api prefix
-// The request path will be like /api/auth/login, so we mount at /api
-// Wrap routes in try-catch to handle any import/initialization errors
+// Mount routes
 try {
   app.use('/api/auth', authRoutes);
   app.use('/api/ai', authenticateToken, aiRoutes);
@@ -213,155 +202,47 @@ try {
     message: error.message,
     name: error.name,
     stack: error.stack,
-    code: error.code,
   });
   routesMounted = false;
-  // Add a fallback route to show the error
-  app.use('/api/*', (req, res) => {
-    console.error('Route access attempted but routes not mounted:', req.path);
-    res.status(500).json({
-      error: 'Route initialization failed',
-      message: process.env.NODE_ENV === 'development' || process.env.VERCEL_ENV === 'development'
-        ? error.message 
-        : 'Server configuration error. Please check server logs.',
-      details: process.env.NODE_ENV === 'development' ? {
-        name: error.name,
-        code: error.code,
-        stack: error.stack,
-      } : undefined,
-    });
-  });
 }
 
-// Error handling middleware - must be last
+// Error handling middleware
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', {
     message: err.message,
     name: err.name,
-    code: err.code,
     stack: err.stack,
     path: req.path,
-    method: req.method,
-    body: req.body,
   });
   
-  // Don't send response if headers already sent
   if (res.headersSent) {
-    console.error('Headers already sent, cannot send error response');
     return next(err);
   }
   
-  // Ensure we always send a response
-  try {
-    res.status(err.status || 500).json({
-      error: process.env.NODE_ENV === 'development' || process.env.VERCEL_ENV === 'development'
-        ? err.message || 'Internal server error'
-        : 'Internal server error',
-      ...(process.env.NODE_ENV === 'development' && { 
-        details: {
-          name: err.name,
-          code: err.code,
-          message: err.message,
-        }
-      }),
-    });
-  } catch (responseError) {
-    console.error('Failed to send error response:', responseError);
-    // Last resort - try to end the response
-    if (!res.headersSent) {
-      try {
-        res.status(500).end('Internal server error');
-      } catch (e) {
-        console.error('Completely failed to send response:', e);
-      }
-    }
-  }
+  res.status(err.status || 500).json({
+    error: process.env.NODE_ENV === 'development' || process.env.VERCEL_ENV === 'development'
+      ? err.message || 'Internal server error'
+      : 'Internal server error',
+  });
 });
 
-// 404 handler for unmatched routes
+// 404 handler
 app.use((req, res) => {
-  console.error('404 - Route not found:', {
-    method: req.method,
-    path: req.path,
-    originalUrl: req.originalUrl,
-    url: req.url,
-    routesMounted,
-  });
   res.status(404).json({ 
     error: 'Route not found',
     path: req.path,
-    method: req.method,
   });
 });
 
-// Initialize model detection on module load (for serverless cold starts)
-// Wrap in try-catch to prevent module load failures
-try {
-  initializeModelDetection().catch((err) => {
-    console.error('Failed to initialize model detection:', err.message);
-    // Don't throw - allow the server to start even if model detection fails
-  });
-} catch (err) {
-  console.error('Error during model detection setup:', err.message);
-}
-
-// Handle unhandled promise rejections
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-});
-
-process.on('uncaughtException', (error) => {
-  console.error('Uncaught Exception:', error);
+// Initialize model detection (non-blocking)
+initializeModelDetection().catch((err) => {
+  console.error('Failed to initialize model detection:', err.message);
 });
 
 // Vercel serverless function handler
 const handler = serverless(app, {
-  binary: ['image/*', 'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+  binary: ['image/*', 'application/pdf'],
 });
 
-// Wrap handler to catch any initialization errors
-const wrappedHandler = async (event, context) => {
-  try {
-    console.log('Handler called:', {
-      path: event.path,
-      method: event.httpMethod,
-      hasBody: !!event.body,
-    });
-    const result = await handler(event, context);
-    console.log('Handler result:', {
-      statusCode: result?.statusCode,
-      path: event.path,
-    });
-    return result;
-  } catch (error) {
-    console.error('Handler error:', {
-      message: error.message,
-      name: error.name,
-      stack: error.stack,
-      path: event?.path,
-      method: event?.httpMethod,
-    });
-    return {
-      statusCode: 500,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      },
-      body: JSON.stringify({
-        error: 'Internal server error',
-        message: process.env.NODE_ENV === 'development' || process.env.VERCEL_ENV === 'development'
-          ? error.message 
-          : 'An error occurred processing your request',
-        ...(process.env.NODE_ENV === 'development' && {
-          details: {
-            name: error.name,
-            stack: error.stack,
-          }
-        }),
-      }),
-    };
-  }
-};
-
-// Export the handler - serverless-http handles async errors automatically
-export default wrappedHandler;
+// Export handler
+export default handler;

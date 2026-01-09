@@ -271,31 +271,42 @@ router.post('/login', async (req, res) => {
       : 'Failed to login. Please try again later.';
     
     // Make sure we haven't already sent a response
-    if (!res.headersSent) {
-      try {
-        res.status(500).json({ 
-          error: errorMessage,
-          ...(process.env.NODE_ENV === 'development' || process.env.VERCEL_ENV === 'development' ? { 
-            details: {
-              name: error.name,
-              code: error.code,
-              message: error.message,
-            }
-          } : {}),
-        });
-      } catch (responseError) {
-        console.error('Failed to send error response:', responseError);
-        // Last resort - try to end the response
-        if (!res.headersSent) {
-          try {
-            res.status(500).end('Internal server error');
-          } catch (e) {
-            console.error('Completely failed to send response:', e);
+    if (res.headersSent) {
+      console.error('Response already sent, cannot send error response for login');
+      return;
+    }
+    
+    try {
+      const errorResponse = { 
+        error: errorMessage,
+        ...(process.env.NODE_ENV === 'development' || process.env.VERCEL_ENV === 'development' ? { 
+          details: {
+            name: error.name,
+            code: error.code,
+            message: error.message,
           }
+        } : {}),
+      };
+      
+      res.status(500).json(errorResponse);
+      console.log('Login error response sent:', { 
+        statusCode: 500, 
+        hasDetails: !!errorResponse.details 
+      });
+    } catch (responseError) {
+      console.error('Failed to send login error response:', {
+        message: responseError.message,
+        name: responseError.name,
+        originalError: error.message,
+      });
+      // Last resort - try to end the response
+      if (!res.headersSent) {
+        try {
+          res.status(500).end('Internal server error');
+        } catch (e) {
+          console.error('Completely failed to send response:', e);
         }
       }
-    } else {
-      console.error('Response already sent, cannot send error response');
     }
   }
 });

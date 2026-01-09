@@ -18,13 +18,29 @@ const __dirname = path.dirname(__filename);
 const router = express.Router();
 
 // Configure multer for file uploads
-const uploadDir = path.join(__dirname, '../../uploads/resumes');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
+// In Vercel/serverless, use /tmp directory (only writable location)
+// In local dev, use project uploads directory
+const getUploadDir = () => {
+  if (process.env.VERCEL) {
+    // Vercel serverless - use /tmp
+    return '/tmp/uploads/resumes';
+  }
+  // Local development
+  return path.join(__dirname, '../../uploads/resumes');
+};
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
+    // Create directory lazily when actually needed (not on module load)
+    const uploadDir = getUploadDir();
+    if (!fs.existsSync(uploadDir)) {
+      try {
+        fs.mkdirSync(uploadDir, { recursive: true });
+      } catch (error) {
+        console.error('Failed to create upload directory:', error);
+        return cb(error);
+      }
+    }
     cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
