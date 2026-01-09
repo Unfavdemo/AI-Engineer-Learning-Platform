@@ -103,12 +103,8 @@ app.get('/api/health', async (req, res) => {
         error: 'DATABASE_URL is not set' 
       });
     }
-    // Add timeout to health check query
-    const queryPromise = pool.query('SELECT 1');
-    const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Health check timeout')), 5000)
-    );
-    await Promise.race([queryPromise, timeoutPromise]);
+    // Query with timeout (handled by pool wrapper)
+    await pool.query('SELECT 1');
     res.json({ status: 'ok', database: 'connected' });
   } catch (error) {
     res.status(500).json({ 
