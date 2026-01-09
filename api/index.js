@@ -15,7 +15,7 @@ import conceptsRoutes from '../server/src/routes/concepts.js';
 import resumesRoutes from '../server/src/routes/resumes.js';
 import practiceRoutes from '../server/src/routes/practice.js';
 import { authenticateToken } from '../server/src/middleware/auth.js';
-import OpenAI from 'openai';
+// OpenAI is imported in AI routes, not needed here
 
 // Load environment variables
 const __filename = fileURLToPath(import.meta.url);
@@ -23,67 +23,8 @@ const __dirname = dirname(__filename);
 const projectRoot = join(__dirname, '../');
 dotenv.config({ path: join(projectRoot, '.env') });
 
-// Initialize OpenAI model detection (cache in global scope for serverless)
-let detectedModel = null;
-
-async function initializeModelDetection() {
-  if (detectedModel) {
-    return detectedModel;
-  }
-
-  if (!process.env.OPENAI_API_KEY) {
-    console.log('⚠️  OPENAI_API_KEY not set, skipping model detection');
-    detectedModel = 'gpt-3.5-turbo';
-    return detectedModel;
-  }
-
-  try {
-    const openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    });
-
-    const MODEL_PRIORITY = [
-      'gpt-4o',
-      'gpt-4-turbo',
-      'gpt-4',
-      'gpt-4o-mini',
-      'gpt-3.5-turbo',
-    ];
-
-    console.log('🔍 Detecting available OpenAI models...');
-    
-    for (const model of MODEL_PRIORITY) {
-      try {
-        await openai.chat.completions.create({
-          model: model,
-          messages: [{ role: 'user', content: 'test' }],
-          max_tokens: 1,
-        });
-        console.log(`✅ Detected available model: ${model}`);
-        detectedModel = model;
-        process.env.DETECTED_MODEL = model;
-        return model;
-      } catch (error) {
-        if (error.status === 404 || error.code === 'model_not_found' || 
-            error.message?.toLowerCase().includes('model') ||
-            error.message?.toLowerCase().includes('not found')) {
-          continue;
-        }
-        throw error;
-      }
-    }
-    
-    console.log('⚠️  No models detected, will use gpt-3.5-turbo as fallback');
-    detectedModel = 'gpt-3.5-turbo';
-    process.env.DETECTED_MODEL = 'gpt-3.5-turbo';
-    return detectedModel;
-  } catch (error) {
-    console.error('❌ Error detecting models:', error.message);
-    detectedModel = 'gpt-3.5-turbo';
-    process.env.DETECTED_MODEL = 'gpt-3.5-turbo';
-    return detectedModel;
-  }
-}
+// Model detection is handled lazily in the AI routes (server/src/routes/ai.js)
+// No need to initialize at module load - this prevents blocking serverless function startup
 
 const app = express();
 
@@ -162,7 +103,12 @@ app.get('/api/health', async (req, res) => {
         error: 'DATABASE_URL is not set' 
       });
     }
-    await pool.query('SELECT 1');
+    // Add timeout to health check query
+    const queryPromise = pool.query('SELECT 1');
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Health check timeout')), 5000)
+    );
+    await Promise.race([queryPromise, timeoutPromise]);
     res.json({ status: 'ok', database: 'connected' });
   } catch (error) {
     res.status(500).json({ 
@@ -234,10 +180,7 @@ app.use((req, res) => {
   });
 });
 
-// Initialize model detection (non-blocking)
-initializeModelDetection().catch((err) => {
-  console.error('Failed to initialize model detection:', err.message);
-});
+// Model detection is handled lazily in the AI routes - no initialization needed here
 
 // Vercel serverless function handler
 const handler = serverless(app, {

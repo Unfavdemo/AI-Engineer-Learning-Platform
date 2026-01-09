@@ -127,9 +127,13 @@ router.post('/login', async (req, res) => {
     // Find user
     let result;
     try {
-      // Test connection first
+      // Test connection first with timeout
       try {
-        await pool.query('SELECT 1');
+        const connectionTest = pool.query('SELECT 1');
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Connection test timeout')), 5000)
+        );
+        await Promise.race([connectionTest, timeoutPromise]);
       } catch (connError) {
         console.error('Database connection test failed:', {
           message: connError.message,
@@ -141,10 +145,15 @@ router.post('/login', async (req, res) => {
         });
       }
       
-      result = await pool.query(
+      // Query with timeout
+      const queryPromise = pool.query(
         'SELECT id, email, password_hash, name FROM users WHERE email = $1',
         [email]
       );
+      const queryTimeout = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Query timeout')), 10000)
+      );
+      result = await Promise.race([queryPromise, queryTimeout]);
     } catch (dbError) {
       console.error('Database query error in login:', {
         message: dbError.message,
