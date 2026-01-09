@@ -61,7 +61,18 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: 'Invalid input', details: error.errors });
     }
     console.error('Register error:', error);
-    res.status(500).json({ error: 'Failed to register user' });
+    
+    // Check for common database errors
+    if (error.code === '23505') { // Unique violation
+      return res.status(400).json({ error: 'User already exists' });
+    }
+    
+    // Provide more helpful error messages in development
+    const errorMessage = process.env.NODE_ENV === 'development' 
+      ? `Failed to register user: ${error.message || 'Unknown error'}`
+      : 'Failed to register user. Please try again later.';
+    
+    res.status(500).json({ error: errorMessage });
   }
 });
 
@@ -106,7 +117,27 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ error: 'Invalid input', details: error.errors });
     }
     console.error('Login error:', error);
-    res.status(500).json({ error: 'Failed to login' });
+    
+    // Check for missing JWT_SECRET
+    if (!process.env.JWT_SECRET) {
+      return res.status(500).json({ 
+        error: 'Server configuration error: JWT_SECRET is not set' 
+      });
+    }
+    
+    // Check for database connection errors
+    if (error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT' || error.message?.includes('timeout')) {
+      return res.status(503).json({ 
+        error: 'Database connection failed. Please try again later.' 
+      });
+    }
+    
+    // Provide more helpful error messages in development
+    const errorMessage = process.env.NODE_ENV === 'development' 
+      ? `Failed to login: ${error.message || 'Unknown error'}`
+      : 'Failed to login. Please try again later.';
+    
+    res.status(500).json({ error: errorMessage });
   }
 });
 

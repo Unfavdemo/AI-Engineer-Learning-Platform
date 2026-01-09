@@ -41,7 +41,25 @@ export function Login() {
       
       navigate('/home');
     } catch (err) {
-      setError(err.response?.data?.error || 'An error occurred');
+      // Extract error message from various possible error formats
+      let errorMessage = 'An error occurred';
+      
+      if (err.response?.data) {
+        // Handle different error response formats
+        if (typeof err.response.data.error === 'string') {
+          errorMessage = err.response.data.error;
+        } else if (err.response.data.error?.message) {
+          errorMessage = err.response.data.error.message;
+        } else if (err.response.data.message) {
+          errorMessage = err.response.data.message;
+        } else if (typeof err.response.data === 'string') {
+          errorMessage = err.response.data;
+        }
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
