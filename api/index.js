@@ -181,13 +181,31 @@ try {
 
 // Error handling middleware - must be last
 app.use((err, req, res, next) => {
-  console.error('Unhandled error:', err);
-  console.error('Error stack:', err.stack);
+  console.error('Unhandled error:', {
+    message: err.message,
+    name: err.name,
+    code: err.code,
+    stack: err.stack,
+    path: req.path,
+    method: req.method,
+  });
+  
+  // Don't send response if headers already sent
+  if (res.headersSent) {
+    return next(err);
+  }
+  
   res.status(err.status || 500).json({
-    error: process.env.NODE_ENV === 'development' 
+    error: process.env.NODE_ENV === 'development' || process.env.VERCEL_ENV === 'development'
       ? err.message || 'Internal server error'
       : 'Internal server error',
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
+    ...(process.env.NODE_ENV === 'development' && { 
+      details: {
+        name: err.name,
+        code: err.code,
+        stack: err.stack,
+      }
+    }),
   });
 });
 

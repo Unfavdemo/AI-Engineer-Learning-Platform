@@ -141,32 +141,64 @@ router.post('/login', async (req, res) => {
       token,
     });
   } catch (error) {
+    // Log full error details for debugging
+    console.error('Login error details:', {
+      name: error.name,
+      message: error.message,
+      code: error.code,
+      stack: error.stack,
+      response: error.response?.data,
+    });
+    
     if (error.name === 'ZodError') {
       return res.status(400).json({ error: 'Invalid input', details: error.errors });
     }
-    console.error('Login error:', error);
-    
     
     // Check for database connection errors
-    if (error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT' || error.message?.includes('timeout') || error.message?.includes('Connection terminated')) {
+    if (error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT' || 
+        error.message?.includes('timeout') || error.message?.includes('Connection terminated') ||
+        error.message?.includes('connect ECONNREFUSED')) {
       return res.status(503).json({ 
-        error: 'Database connection failed. Please check your DATABASE_URL and ensure your Neon project is not paused.' 
+        error: 'Database connection failed. Please check your DATABASE_URL and ensure your Neon project is not paused.',
+        code: error.code,
+      });
+    }
+    
+    // Check for PostgreSQL-specific errors
+    if (error.code && error.code.startsWith('2') || error.code && error.code.startsWith('3')) {
+      return res.status(500).json({ 
+        error: 'Database error occurred',
+        code: error.code,
+        message: process.env.NODE_ENV === 'development' ? error.message : undefined,
       });
     }
     
     // Check for missing DATABASE_URL
-    if (error.message?.includes('DATABASE_URL') || !process.env.DATABASE_URL) {
+    if (error.message?.includes('DATABASE_URL') || (!process.env.DATABASE_URL && !pool)) {
       return res.status(503).json({ 
         error: 'Database is not configured. Please set DATABASE_URL environment variable in Vercel.' 
       });
     }
     
-    // Provide more helpful error messages in development
-    const errorMessage = process.env.NODE_ENV === 'development' 
+    // Always return a proper error response
+    // In production, show generic message but log details
+    const errorMessage = process.env.NODE_ENV === 'development' || process.env.VERCEL_ENV === 'development'
       ? `Failed to login: ${error.message || 'Unknown error'}`
       : 'Failed to login. Please try again later.';
     
-    res.status(500).json({ error: errorMessage });
+    // Make sure we haven't already sent a response
+    if (!res.headersSent) {
+      res.status(500).json({ 
+        error: errorMessage,
+        ...(process.env.NODE_ENV === 'development' && { 
+          details: {
+            name: error.name,
+            code: error.code,
+            message: error.message,
+          }
+        }),
+      });
+    }
   }
 });
 
