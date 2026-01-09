@@ -112,6 +112,22 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+// Simple test endpoint (no dependencies)
+app.get('/api/test', (req, res) => {
+  res.json({ 
+    status: 'ok', 
+    message: 'Serverless function is working',
+    timestamp: new Date().toISOString(),
+    env: {
+      hasDatabaseUrl: !!process.env.DATABASE_URL,
+      hasJwtSecret: !!process.env.JWT_SECRET,
+      hasOpenAiKey: !!process.env.OPENAI_API_KEY,
+      nodeEnv: process.env.NODE_ENV,
+      vercel: !!process.env.VERCEL,
+    }
+  });
+});
+
 // Health check
 app.get('/api/health', async (req, res) => {
   try {
@@ -134,31 +150,67 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
+// Request logging middleware (for debugging)
+app.use((req, res, next) => {
+  console.log(`${req.method} ${req.path}`);
+  next();
+});
+
 // Routes - Vercel rewrites /api/* to /api, so we need to handle /api prefix
 // The request path will be like /api/auth/login, so we mount at /api
-app.use('/api/auth', authRoutes);
-app.use('/api/ai', authenticateToken, aiRoutes);
-app.use('/api/projects', authenticateToken, projectsRoutes);
-app.use('/api/skills', authenticateToken, skillsRoutes);
-app.use('/api/dashboard', authenticateToken, dashboardRoutes);
-app.use('/api/concepts', authenticateToken, conceptsRoutes);
-app.use('/api/resumes', authenticateToken, resumesRoutes);
-app.use('/api/practice', authenticateToken, practiceRoutes);
+// Wrap routes in try-catch to handle any import/initialization errors
+try {
+  app.use('/api/auth', authRoutes);
+  app.use('/api/ai', authenticateToken, aiRoutes);
+  app.use('/api/projects', authenticateToken, projectsRoutes);
+  app.use('/api/skills', authenticateToken, skillsRoutes);
+  app.use('/api/dashboard', authenticateToken, dashboardRoutes);
+  app.use('/api/concepts', authenticateToken, conceptsRoutes);
+  app.use('/api/resumes', authenticateToken, resumesRoutes);
+  app.use('/api/practice', authenticateToken, practiceRoutes);
+} catch (error) {
+  console.error('Error mounting routes:', error);
+  // Add a fallback route to show the error
+  app.use('/api/*', (req, res) => {
+    res.status(500).json({
+      error: 'Route initialization failed',
+      message: process.env.NODE_ENV === 'development' ? error.message : undefined,
+    });
+  });
+}
 
-// Error handling middleware
+// Error handling middleware - must be last
 app.use((err, req, res, next) => {
-  console.error('Error:', err);
+  console.error('Unhandled error:', err);
+  console.error('Error stack:', err.stack);
   res.status(err.status || 500).json({
-    error: err.message || 'Internal server error',
+    error: process.env.NODE_ENV === 'development' 
+      ? err.message || 'Internal server error'
+      : 'Internal server error',
+    ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
   });
 });
 
+// 404 handler for unmatched routes
+app.use((req, res) => {
+  res.status(404).json({ error: 'Route not found' });
+});
+
 // Initialize model detection on module load (for serverless cold starts)
-initializeModelDetection().catch(console.error);
+// Wrap in try-catch to prevent module load failures
+try {
+  initializeModelDetection().catch((err) => {
+    console.error('Failed to initialize model detection:', err.message);
+    // Don't throw - allow the server to start even if model detection fails
+  });
+} catch (err) {
+  console.error('Error during model detection setup:', err.message);
+}
 
 // Vercel serverless function handler
 const handler = serverless(app, {
   binary: ['image/*', 'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
 });
 
+// Export the handler - serverless-http handles async errors automatically
 export default handler;
