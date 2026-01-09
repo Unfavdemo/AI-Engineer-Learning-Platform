@@ -42,15 +42,20 @@ function createPool() {
     return _pool;
   }
   
+  // Add statement_timeout to connection string if not already present
+  let connectionString = process.env.DATABASE_URL;
+  if (!connectionString.includes('statement_timeout')) {
+    const separator = connectionString.includes('?') ? '&' : '?';
+    connectionString = `${connectionString}${separator}statement_timeout=5000`;
+  }
+  
   _pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
+    connectionString: connectionString,
     ssl: sslConfig,
     // Connection pool settings optimized for serverless
     max: process.env.VERCEL ? 1 : 20, // Use 1 connection in serverless to avoid connection limits
     idleTimeoutMillis: 30000, // Close idle clients after 30 seconds
-    connectionTimeoutMillis: 5000, // Reduced to 5 seconds - fail fast if DB is unreachable
-    statement_timeout: 10000, // 10 second query timeout
-    query_timeout: 10000, // 10 second query timeout
+    connectionTimeoutMillis: 3000, // 3 seconds - fail very fast if DB is unreachable
     // For serverless, we want to close connections quickly
     ...(process.env.VERCEL && {
       allowExitOnIdle: true,
@@ -60,13 +65,31 @@ function createPool() {
   // Set up event listeners
   setupPoolListeners(_pool);
   
-  // Wrap query method to always enforce timeout
+  // Wrap query method to always enforce timeout (5 seconds max)
   const originalQuery = _pool.query.bind(_pool);
-  _pool.query = function(text, params) {
-    const queryPromise = originalQuery(text, params);
-    const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Query timeout after 10 seconds')), 10000)
-    );
+  _pool.query = function(text, params, callback) {
+    // Handle callback-style queries
+    if (typeof params === 'function') {
+      callback = params;
+      params = undefined;
+    }
+    
+    const QUERY_TIMEOUT = 5000; // 5 seconds max for any query
+    
+    const queryPromise = originalQuery(text, params, callback);
+    
+    // If callback is provided, pg handles it differently - just return the promise
+    if (callback) {
+      return queryPromise;
+    }
+    
+    // Wrap in timeout for promise-based queries
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => {
+        reject(new Error(`Query timeout after ${QUERY_TIMEOUT}ms - database may be unreachable or paused`));
+      }, QUERY_TIMEOUT);
+    });
+    
     return Promise.race([queryPromise, timeoutPromise]);
   };
   

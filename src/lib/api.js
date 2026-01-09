@@ -25,7 +25,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 15000, // 15 second timeout (reduced from 30s)
+  timeout: 8000, // 8 second timeout - must be longer than DB query timeout (5s) + overhead
   validateStatus: function (status) {
     // Don't throw for status codes less than 500
     return status < 500;

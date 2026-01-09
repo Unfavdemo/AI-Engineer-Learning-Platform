@@ -127,21 +127,8 @@ router.post('/login', async (req, res) => {
     // Find user
     let result;
     try {
-      // Test connection first (timeout is handled by pool wrapper)
-      try {
-        await pool.query('SELECT 1');
-      } catch (connError) {
-        console.error('Database connection test failed:', {
-          message: connError.message,
-          code: connError.code,
-        });
-        return res.status(503).json({ 
-          error: 'Database connection failed. Please check your DATABASE_URL and ensure your Neon project is not paused.',
-          code: connError.code,
-        });
-      }
-      
-      // Query user (timeout is handled by pool wrapper)
+      // Query user directly (timeout is handled by pool wrapper - 5 seconds max)
+      // Skip connection test to reduce latency - if DB is down, query will fail fast
       result = await pool.query(
         'SELECT id, email, password_hash, name FROM users WHERE email = $1',
         [email]
