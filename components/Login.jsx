@@ -55,8 +55,8 @@ export function Login() {
       let errorMessage = 'An error occurred. Please try again.';
       
       // Handle timeout and network errors first
-      if (err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
-        errorMessage = 'Request timed out. The server is taking too long to respond. Please try again.';
+      if (err.code === 'ECONNABORTED' || err.message?.includes('timeout') || err.message?.includes('timed out')) {
+        errorMessage = 'Request timed out. The server is not responding. This usually means the server is down or experiencing issues. Please check the Vercel dashboard for function logs.';
       } else if (err.code === 'ERR_NETWORK' || err.message?.includes('Network Error')) {
         errorMessage = 'Network error. Please check your internet connection.';
       } else if (err.response) {

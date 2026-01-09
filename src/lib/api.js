@@ -25,7 +25,11 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 30000, // 30 second timeout
+  timeout: 15000, // 15 second timeout (reduced from 30s)
+  validateStatus: function (status) {
+    // Don't throw for status codes less than 500
+    return status < 500;
+  },
 });
 
 // Add token to requests
@@ -116,10 +120,16 @@ export const authAPI = {
     } catch (error) {
       // Log the full error for debugging
       console.error('Login API error:', {
-        error,
-        response: error.response,
-        data: error.response?.data,
-        status: error.response?.status,
+        error: error,
+        errorType: typeof error,
+        errorConstructor: error?.constructor?.name,
+        message: error?.message,
+        code: error?.code,
+        response: error?.response,
+        data: error?.response?.data,
+        status: error?.response?.status,
+        request: error?.request,
+        config: error?.config,
       });
       throw error; // Re-throw to be handled by the component
     }
