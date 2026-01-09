@@ -18,6 +18,16 @@ const loginSchema = z.object({
   password: z.string(),
 });
 
+// Test endpoint to verify route is accessible
+router.get('/test', (req, res) => {
+  res.json({ 
+    message: 'Auth route is working',
+    hasPool: !!pool,
+    hasJwtSecret: !!process.env.JWT_SECRET,
+    timestamp: new Date().toISOString(),
+  });
+});
+
 // Register
 router.post('/register', async (req, res) => {
   try {
@@ -107,13 +117,39 @@ router.post('/login', async (req, res) => {
       });
     }
 
+    // Validate request body exists
+    if (!req.body || typeof req.body !== 'object') {
+      return res.status(400).json({ error: 'Invalid request body' });
+    }
+
     const { email, password } = loginSchema.parse(req.body);
 
     // Find user
-    const result = await pool.query(
-      'SELECT id, email, password_hash, name FROM users WHERE email = $1',
-      [email]
-    );
+    let result;
+    try {
+      result = await pool.query(
+        'SELECT id, email, password_hash, name FROM users WHERE email = $1',
+        [email]
+      );
+    } catch (dbError) {
+      console.error('Database query error in login:', {
+        message: dbError.message,
+        code: dbError.code,
+        name: dbError.name,
+      });
+      
+      // Check for database connection errors
+      if (dbError.code === 'ECONNREFUSED' || dbError.code === 'ETIMEDOUT' || 
+          dbError.message?.includes('timeout') || dbError.message?.includes('Connection terminated') ||
+          dbError.message?.includes('connect ECONNREFUSED')) {
+        return res.status(503).json({ 
+          error: 'Database connection failed. Please check your DATABASE_URL and ensure your Neon project is not paused.',
+          code: dbError.code,
+        });
+      }
+      
+      throw dbError; // Re-throw to be caught by outer catch
+    }
 
     if (result.rows.length === 0) {
       return res.status(401).json({ error: 'Invalid credentials' });
@@ -121,8 +157,20 @@ router.post('/login', async (req, res) => {
 
     const user = result.rows[0];
 
+    // Check if password_hash exists
+    if (!user.password_hash) {
+      console.error('User found but password_hash is missing:', user.id);
+      return res.status(500).json({ error: 'User account error. Please contact support.' });
+    }
+
     // Verify password
-    const isValid = await bcrypt.compare(password, user.password_hash);
+    let isValid;
+    try {
+      isValid = await bcrypt.compare(password, user.password_hash);
+    } catch (bcryptError) {
+      console.error('Bcrypt comparison error:', bcryptError);
+      return res.status(500).json({ error: 'Password verification failed' });
+    }
 
     if (!isValid) {
       return res.status(401).json({ error: 'Invalid credentials' });
@@ -130,11 +178,17 @@ router.post('/login', async (req, res) => {
 
     // Generate JWT with longer expiration if "remember me" is checked
     const expiresIn = req.body.rememberMe ? '30d' : '7d';
-    const token = jwt.sign(
-      { userId: user.id },
-      process.env.JWT_SECRET,
-      { expiresIn }
-    );
+    let token;
+    try {
+      token = jwt.sign(
+        { userId: user.id },
+        process.env.JWT_SECRET,
+        { expiresIn }
+      );
+    } catch (jwtError) {
+      console.error('JWT signing error:', jwtError);
+      return res.status(500).json({ error: 'Failed to generate authentication token' });
+    }
 
     res.json({
       user: { id: user.id, email: user.email, name: user.name },
@@ -148,10 +202,17 @@ router.post('/login', async (req, res) => {
       code: error.code,
       stack: error.stack,
       response: error.response?.data,
+      body: req.body,
+      hasPool: !!pool,
+      hasJwtSecret: !!process.env.JWT_SECRET,
     });
     
     if (error.name === 'ZodError') {
-      return res.status(400).json({ error: 'Invalid input', details: error.errors });
+      return res.status(400).json({ 
+        error: 'Invalid input', 
+        details: error.errors,
+        received: req.body,
+      });
     }
     
     // Check for database connection errors

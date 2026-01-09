@@ -152,9 +152,18 @@ app.get('/api/health', async (req, res) => {
 
 // Request logging middleware (for debugging)
 app.use((req, res, next) => {
-  console.log(`${req.method} ${req.path}`);
+  console.log(`${req.method} ${req.path}`, {
+    hasBody: !!req.body,
+    bodyKeys: req.body ? Object.keys(req.body) : [],
+    contentType: req.headers['content-type'],
+  });
   next();
 });
+
+// Async error wrapper to catch unhandled promise rejections
+const asyncHandler = (fn) => (req, res, next) => {
+  Promise.resolve(fn(req, res, next)).catch(next);
+};
 
 // Routes - Vercel rewrites /api/* to /api, so we need to handle /api prefix
 // The request path will be like /api/auth/login, so we mount at /api
@@ -188,25 +197,40 @@ app.use((err, req, res, next) => {
     stack: err.stack,
     path: req.path,
     method: req.method,
+    body: req.body,
   });
   
   // Don't send response if headers already sent
   if (res.headersSent) {
+    console.error('Headers already sent, cannot send error response');
     return next(err);
   }
   
-  res.status(err.status || 500).json({
-    error: process.env.NODE_ENV === 'development' || process.env.VERCEL_ENV === 'development'
-      ? err.message || 'Internal server error'
-      : 'Internal server error',
-    ...(process.env.NODE_ENV === 'development' && { 
-      details: {
-        name: err.name,
-        code: err.code,
-        stack: err.stack,
+  // Ensure we always send a response
+  try {
+    res.status(err.status || 500).json({
+      error: process.env.NODE_ENV === 'development' || process.env.VERCEL_ENV === 'development'
+        ? err.message || 'Internal server error'
+        : 'Internal server error',
+      ...(process.env.NODE_ENV === 'development' && { 
+        details: {
+          name: err.name,
+          code: err.code,
+          message: err.message,
+        }
+      }),
+    });
+  } catch (responseError) {
+    console.error('Failed to send error response:', responseError);
+    // Last resort - try to end the response
+    if (!res.headersSent) {
+      try {
+        res.status(500).end('Internal server error');
+      } catch (e) {
+        console.error('Completely failed to send response:', e);
       }
-    }),
-  });
+    }
+  }
 });
 
 // 404 handler for unmatched routes
@@ -225,10 +249,38 @@ try {
   console.error('Error during model detection setup:', err.message);
 }
 
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+});
+
 // Vercel serverless function handler
 const handler = serverless(app, {
   binary: ['image/*', 'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
 });
 
+// Wrap handler to catch any initialization errors
+const wrappedHandler = async (event, context) => {
+  try {
+    return await handler(event, context);
+  } catch (error) {
+    console.error('Handler error:', error);
+    return {
+      statusCode: 500,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        error: 'Internal server error',
+        message: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      }),
+    };
+  }
+};
+
 // Export the handler - serverless-http handles async errors automatically
-export default handler;
+export default wrappedHandler;
