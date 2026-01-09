@@ -127,6 +127,20 @@ router.post('/login', async (req, res) => {
     // Find user
     let result;
     try {
+      // Test connection first
+      try {
+        await pool.query('SELECT 1');
+      } catch (connError) {
+        console.error('Database connection test failed:', {
+          message: connError.message,
+          code: connError.code,
+        });
+        return res.status(503).json({ 
+          error: 'Database connection failed. Please check your DATABASE_URL and ensure your Neon project is not paused.',
+          code: connError.code,
+        });
+      }
+      
       result = await pool.query(
         'SELECT id, email, password_hash, name FROM users WHERE email = $1',
         [email]
@@ -136,14 +150,23 @@ router.post('/login', async (req, res) => {
         message: dbError.message,
         code: dbError.code,
         name: dbError.name,
+        stack: dbError.stack,
       });
       
       // Check for database connection errors
       if (dbError.code === 'ECONNREFUSED' || dbError.code === 'ETIMEDOUT' || 
           dbError.message?.includes('timeout') || dbError.message?.includes('Connection terminated') ||
-          dbError.message?.includes('connect ECONNREFUSED')) {
+          dbError.message?.includes('connect ECONNREFUSED') || dbError.code === '57P01') {
         return res.status(503).json({ 
           error: 'Database connection failed. Please check your DATABASE_URL and ensure your Neon project is not paused.',
+          code: dbError.code,
+        });
+      }
+      
+      // Check for table doesn't exist errors
+      if (dbError.code === '42P01' || dbError.message?.includes('does not exist')) {
+        return res.status(503).json({ 
+          error: 'Database tables not found. Please run database migrations.',
           code: dbError.code,
         });
       }
@@ -249,16 +272,30 @@ router.post('/login', async (req, res) => {
     
     // Make sure we haven't already sent a response
     if (!res.headersSent) {
-      res.status(500).json({ 
-        error: errorMessage,
-        ...(process.env.NODE_ENV === 'development' && { 
-          details: {
-            name: error.name,
-            code: error.code,
-            message: error.message,
+      try {
+        res.status(500).json({ 
+          error: errorMessage,
+          ...(process.env.NODE_ENV === 'development' || process.env.VERCEL_ENV === 'development' ? { 
+            details: {
+              name: error.name,
+              code: error.code,
+              message: error.message,
+            }
+          } : {}),
+        });
+      } catch (responseError) {
+        console.error('Failed to send error response:', responseError);
+        // Last resort - try to end the response
+        if (!res.headersSent) {
+          try {
+            res.status(500).end('Internal server error');
+          } catch (e) {
+            console.error('Completely failed to send response:', e);
           }
-        }),
-      });
+        }
+      }
+    } else {
+      console.error('Response already sent, cannot send error response');
     }
   }
 });

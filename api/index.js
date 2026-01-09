@@ -109,8 +109,22 @@ app.use(cors({
   origin: getFrontendUrl(),
   credentials: true,
 }));
+
+// Body parser with error handling
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Error handler for JSON parsing
+app.use((err, req, res, next) => {
+  if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+    console.error('JSON parsing error:', err.message);
+    return res.status(400).json({ error: 'Invalid JSON in request body' });
+  }
+  next();
+});
+
+// Initialize routesMounted variable before using it in endpoints
+let routesMounted = false;
 
 // Simple test endpoint (no dependencies)
 app.get('/api/test', (req, res) => {
@@ -124,7 +138,21 @@ app.get('/api/test', (req, res) => {
       hasOpenAiKey: !!process.env.OPENAI_API_KEY,
       nodeEnv: process.env.NODE_ENV,
       vercel: !!process.env.VERCEL,
-    }
+      vercelUrl: process.env.VERCEL_URL,
+    },
+    routesMounted,
+  });
+});
+
+// Debug endpoint for login route
+app.post('/api/auth/debug', (req, res) => {
+  res.json({
+    status: 'ok',
+    message: 'Auth route is accessible',
+    body: req.body,
+    hasPool: !!pool,
+    hasJwtSecret: !!process.env.JWT_SECRET,
+    routesMounted,
   });
 });
 
@@ -156,6 +184,7 @@ app.use((req, res, next) => {
     hasBody: !!req.body,
     bodyKeys: req.body ? Object.keys(req.body) : [],
     contentType: req.headers['content-type'],
+    routesMounted,
   });
   next();
 });
@@ -177,13 +206,29 @@ try {
   app.use('/api/concepts', authenticateToken, conceptsRoutes);
   app.use('/api/resumes', authenticateToken, resumesRoutes);
   app.use('/api/practice', authenticateToken, practiceRoutes);
+  routesMounted = true;
+  console.log('✅ All routes mounted successfully');
 } catch (error) {
-  console.error('Error mounting routes:', error);
+  console.error('❌ Error mounting routes:', {
+    message: error.message,
+    name: error.name,
+    stack: error.stack,
+    code: error.code,
+  });
+  routesMounted = false;
   // Add a fallback route to show the error
   app.use('/api/*', (req, res) => {
+    console.error('Route access attempted but routes not mounted:', req.path);
     res.status(500).json({
       error: 'Route initialization failed',
-      message: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      message: process.env.NODE_ENV === 'development' || process.env.VERCEL_ENV === 'development'
+        ? error.message 
+        : 'Server configuration error. Please check server logs.',
+      details: process.env.NODE_ENV === 'development' ? {
+        name: error.name,
+        code: error.code,
+        stack: error.stack,
+      } : undefined,
     });
   });
 }
@@ -235,7 +280,18 @@ app.use((err, req, res, next) => {
 
 // 404 handler for unmatched routes
 app.use((req, res) => {
-  res.status(404).json({ error: 'Route not found' });
+  console.error('404 - Route not found:', {
+    method: req.method,
+    path: req.path,
+    originalUrl: req.originalUrl,
+    url: req.url,
+    routesMounted,
+  });
+  res.status(404).json({ 
+    error: 'Route not found',
+    path: req.path,
+    method: req.method,
+  });
 });
 
 // Initialize model detection on module load (for serverless cold starts)
@@ -266,17 +322,42 @@ const handler = serverless(app, {
 // Wrap handler to catch any initialization errors
 const wrappedHandler = async (event, context) => {
   try {
-    return await handler(event, context);
+    console.log('Handler called:', {
+      path: event.path,
+      method: event.httpMethod,
+      hasBody: !!event.body,
+    });
+    const result = await handler(event, context);
+    console.log('Handler result:', {
+      statusCode: result?.statusCode,
+      path: event.path,
+    });
+    return result;
   } catch (error) {
-    console.error('Handler error:', error);
+    console.error('Handler error:', {
+      message: error.message,
+      name: error.name,
+      stack: error.stack,
+      path: event?.path,
+      method: event?.httpMethod,
+    });
     return {
       statusCode: 500,
       headers: {
         'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
       },
       body: JSON.stringify({
         error: 'Internal server error',
-        message: process.env.NODE_ENV === 'development' ? error.message : undefined,
+        message: process.env.NODE_ENV === 'development' || process.env.VERCEL_ENV === 'development'
+          ? error.message 
+          : 'An error occurred processing your request',
+        ...(process.env.NODE_ENV === 'development' && {
+          details: {
+            name: error.name,
+            stack: error.stack,
+          }
+        }),
       }),
     };
   }
