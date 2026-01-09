@@ -41,30 +41,76 @@ export function Login() {
       
       navigate('/home');
     } catch (err) {
-      // Extract error message from various possible error formats
-      let errorMessage = 'An error occurred';
+      // Log full error for debugging
+      console.error('Login error details:', {
+        error: err,
+        message: err.message,
+        response: err.response,
+        responseData: err.response?.data,
+        status: err.response?.status,
+        code: err.code,
+      });
       
-      // Handle timeout and network errors
+      // Extract error message from various possible error formats
+      let errorMessage = 'An error occurred. Please try again.';
+      
+      // Handle timeout and network errors first
       if (err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
         errorMessage = 'Request timed out. The server is taking too long to respond. Please try again.';
       } else if (err.code === 'ERR_NETWORK' || err.message?.includes('Network Error')) {
         errorMessage = 'Network error. Please check your internet connection.';
-      } else if (err.response?.data) {
-        // Handle different error response formats
-        if (typeof err.response.data.error === 'string') {
-          errorMessage = err.response.data.error;
-        } else if (err.response.data.error?.message) {
-          errorMessage = err.response.data.error.message;
-        } else if (err.response.data.message) {
-          errorMessage = err.response.data.message;
-        } else if (typeof err.response.data === 'string') {
-          errorMessage = err.response.data;
+      } else if (err.response) {
+        // Server responded with an error
+        const data = err.response.data;
+        const status = err.response.status;
+        
+        if (status === 500) {
+          errorMessage = 'Server error. The server encountered an unexpected error. Please try again later.';
+        } else if (status === 503) {
+          errorMessage = 'Service unavailable. The server is temporarily unavailable. Please try again later.';
+        } else if (status === 401) {
+          errorMessage = 'Invalid email or password. Please check your credentials and try again.';
+        } else if (status === 400) {
+          errorMessage = 'Invalid request. Please check your input and try again.';
         }
-      } else if (err.message) {
+        
+        // Try to extract a more specific error message
+        if (data) {
+          // Handle string responses
+          if (typeof data === 'string' && data.length > 1) {
+            errorMessage = data;
+          } 
+          // Handle object responses
+          else if (typeof data === 'object') {
+            // Check for nested error object
+            if (data.error) {
+              if (typeof data.error === 'string' && data.error.length > 1) {
+                errorMessage = data.error;
+              } else if (data.error?.message && typeof data.error.message === 'string' && data.error.message.length > 1) {
+                errorMessage = data.error.message;
+              } else if (data.error?.code) {
+                // If error is an object with code, use a more descriptive message
+                errorMessage = `Server error (${data.error.code}). Please try again later.`;
+              }
+            }
+            // Check for top-level message
+            else if (data.message && typeof data.message === 'string' && data.message.length > 1) {
+              errorMessage = data.message;
+            }
+            // Check for details array (from Zod validation)
+            else if (data.details && Array.isArray(data.details) && data.details.length > 0) {
+              const firstDetail = data.details[0];
+              if (firstDetail.message) {
+                errorMessage = firstDetail.message;
+              }
+            }
+          }
+        }
+      } else if (err.message && err.message.length > 1) {
+        // Only use err.message if it's meaningful (more than 1 character)
         errorMessage = err.message;
       }
       
-      console.error('Login error:', err);
       setError(errorMessage);
     } finally {
       setLoading(false);

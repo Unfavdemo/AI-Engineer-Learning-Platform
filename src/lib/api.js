@@ -101,17 +101,28 @@ export const authAPI = {
     return response.data;
   },
   login: async (email, password, rememberMe = false) => {
-    const response = await api.post('/auth/login', { email, password, rememberMe });
-    if (response.data.token) {
-      localStorage.setItem('token', response.data.token);
-      localStorage.setItem('user', JSON.stringify(response.data.user));
-      if (rememberMe) {
-        localStorage.setItem('rememberMe', 'true');
-      } else {
-        localStorage.removeItem('rememberMe');
+    try {
+      const response = await api.post('/auth/login', { email, password, rememberMe });
+      if (response.data.token) {
+        localStorage.setItem('token', response.data.token);
+        localStorage.setItem('user', JSON.stringify(response.data.user));
+        if (rememberMe) {
+          localStorage.setItem('rememberMe', 'true');
+        } else {
+          localStorage.removeItem('rememberMe');
+        }
       }
+      return response.data;
+    } catch (error) {
+      // Log the full error for debugging
+      console.error('Login API error:', {
+        error,
+        response: error.response,
+        data: error.response?.data,
+        status: error.response?.status,
+      });
+      throw error; // Re-throw to be handled by the component
     }
-    return response.data;
   },
   logout: () => {
     localStorage.removeItem('token');
