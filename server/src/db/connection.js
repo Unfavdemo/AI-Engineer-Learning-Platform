@@ -42,17 +42,29 @@ function createPool() {
     return _pool;
   }
   
+  // Detect serverless environment (Vercel, Netlify, etc.)
+  // VERCEL env var is set automatically by Vercel
+  // Also check for common serverless indicators
+  const isServerless = !!(
+    process.env.VERCEL || 
+    process.env.VERCEL_URL || 
+    process.env.NETLIFY ||
+    process.env.AWS_LAMBDA_FUNCTION_NAME ||
+    process.env.FUNCTION_TARGET ||
+    (process.env.NODE_ENV === 'production' && !process.env.PORT)
+  );
+  
   // Add statement_timeout to connection string if not already present
   // Use shorter timeout for serverless to prevent gateway timeouts
   let connectionString = process.env.DATABASE_URL;
-  const statementTimeout = process.env.VERCEL ? 3000 : 5000; // 3s for serverless, 5s for local
+  const statementTimeout = isServerless ? 3000 : 5000; // 3s for serverless, 5s for local
   if (!connectionString.includes('statement_timeout')) {
     const separator = connectionString.includes('?') ? '&' : '?';
     connectionString = `${connectionString}${separator}statement_timeout=${statementTimeout}`;
   }
   
   // More aggressive timeouts for serverless environments
-  const connectionTimeout = process.env.VERCEL ? 2000 : 3000; // 2s for serverless, 3s for local
+  const connectionTimeout = isServerless ? 2000 : 3000; // 2s for serverless, 3s for local
   
   _pool = new Pool({
     connectionString: connectionString,
@@ -80,10 +92,20 @@ function createPool() {
       params = undefined;
     }
     
+    // Detect serverless environment for timeout configuration
+    const isServerless = !!(
+      process.env.VERCEL || 
+      process.env.VERCEL_URL || 
+      process.env.NETLIFY ||
+      process.env.AWS_LAMBDA_FUNCTION_NAME ||
+      process.env.FUNCTION_TARGET ||
+      (process.env.NODE_ENV === 'production' && !process.env.PORT)
+    );
+    
     // More aggressive timeout for serverless to prevent gateway timeouts
     // Total time: 2s (connection) + 3s (query) = 5s max for serverless
     // This ensures we fail before client timeout (8s) and well before Vercel timeout (60s)
-    const QUERY_TIMEOUT = process.env.VERCEL ? 4000 : 5000; // 4s for serverless (includes connection), 5s for local
+    const QUERY_TIMEOUT = isServerless ? 4000 : 5000; // 4s for serverless (includes connection), 5s for local
     
     const queryPromise = originalQuery(text, params, callback);
     

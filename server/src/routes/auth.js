@@ -118,9 +118,19 @@ function withOperationTimeout(promise, timeoutMs, operationName) {
 
 // Login
 router.post('/login', async (req, res) => {
+  // Detect serverless environment for timeout configuration
+  const isServerless = !!(
+    process.env.VERCEL || 
+    process.env.VERCEL_URL || 
+    process.env.NETLIFY ||
+    process.env.AWS_LAMBDA_FUNCTION_NAME ||
+    process.env.FUNCTION_TARGET ||
+    (process.env.NODE_ENV === 'production' && !process.env.PORT)
+  );
+  
   // Overall operation timeout: 7 seconds for serverless (less than client timeout of 8s)
   // This ensures we fail before the client times out and way before Vercel's 60s timeout
-  const OPERATION_TIMEOUT = process.env.VERCEL ? 7000 : 15000;
+  const OPERATION_TIMEOUT = isServerless ? 7000 : 15000;
   
   // Wrap entire login operation with timeout
   const loginOperation = async () => {
