@@ -100,35 +100,77 @@ router.post('/register', async (req, res) => {
   }
 });
 
+// Helper function to wrap operations with overall timeout
+// This ensures the entire login operation completes within a reasonable time
+function withOperationTimeout(promise, timeoutMs, operationName) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      setTimeout(() => {
+        const timeoutError = new Error(`${operationName} timed out after ${timeoutMs}ms. The server took too long to process your request. This may indicate that your Neon database is paused or experiencing issues. Please check https://console.neon.tech and try again.`);
+        timeoutError.code = 'ETIMEDOUT';
+        timeoutError.operationTimeout = true;
+        reject(timeoutError);
+      }, timeoutMs);
+    })
+  ]);
+}
+
 // Login
 router.post('/login', async (req, res) => {
-  try {
+  // Overall operation timeout: 7 seconds for serverless (less than client timeout of 8s)
+  // This ensures we fail before the client times out and way before Vercel's 60s timeout
+  const OPERATION_TIMEOUT = process.env.VERCEL ? 7000 : 15000;
+  
+  // Wrap entire login operation with timeout
+  const loginOperation = async () => {
+    // Early validation checks (synchronous - no timeout needed)
     // Check if database is configured
     if (!pool) {
-      return res.status(503).json({ 
+      res.status(503).json({ 
         error: 'Database is not configured. Please set DATABASE_URL environment variable.' 
       });
+      return;
     }
 
     // Check if JWT_SECRET is configured
     if (!process.env.JWT_SECRET) {
-      return res.status(503).json({ 
+      res.status(503).json({ 
         error: 'Server configuration error: JWT_SECRET is not set. Please configure it in Vercel environment variables.' 
       });
+      return;
     }
 
     // Validate request body exists
     if (!req.body || typeof req.body !== 'object') {
-      return res.status(400).json({ error: 'Invalid request body' });
+      res.status(400).json({ error: 'Invalid request body' });
+      return;
     }
 
-    const { email, password } = loginSchema.parse(req.body);
+    // Parse and validate request body (can throw ZodError)
+    let email, password;
+    try {
+      const parsed = loginSchema.parse(req.body);
+      email = parsed.email;
+      password = parsed.password;
+    } catch (zodError) {
+      // Handle validation errors early (before async operations)
+      if (zodError.name === 'ZodError') {
+        res.status(400).json({ 
+          error: 'Invalid input', 
+          details: zodError.errors,
+          received: req.body,
+        });
+        return;
+      }
+      throw zodError; // Re-throw if not a ZodError
+    }
 
-    // Find user
+    // Find user (async operation - protected by overall timeout)
     let result;
     try {
-      // Query user directly (timeout is handled by pool wrapper - 5 seconds max)
-      // Skip connection test to reduce latency - if DB is down, query will fail fast
+      // Query user directly (timeout is handled by pool wrapper - 4 seconds max for serverless)
+      // This includes connection establishment + query execution
       result = await pool.query(
         'SELECT id, email, password_hash, name FROM users WHERE email = $1',
         [email]
@@ -144,26 +186,30 @@ router.post('/login', async (req, res) => {
       // Check for database connection errors
       if (dbError.code === 'ECONNREFUSED' || dbError.code === 'ETIMEDOUT' || 
           dbError.message?.includes('timeout') || dbError.message?.includes('Connection terminated') ||
-          dbError.message?.includes('connect ECONNREFUSED') || dbError.code === '57P01') {
-        return res.status(503).json({ 
-          error: 'Database connection failed. Please check your DATABASE_URL and ensure your Neon project is not paused.',
-          code: dbError.code,
+          dbError.message?.includes('connect ECONNREFUSED') || dbError.code === '57P01' ||
+          dbError.message?.includes('Neon database')) {
+        res.status(503).json({ 
+          error: dbError.message || 'Database connection failed. Please check your DATABASE_URL and ensure your Neon project is not paused.',
+          code: dbError.code || 'ETIMEDOUT',
         });
+        return;
       }
       
       // Check for table doesn't exist errors
       if (dbError.code === '42P01' || dbError.message?.includes('does not exist')) {
-        return res.status(503).json({ 
+        res.status(503).json({ 
           error: 'Database tables not found. Please run database migrations.',
           code: dbError.code,
         });
+        return;
       }
       
       throw dbError; // Re-throw to be caught by outer catch
     }
 
     if (result.rows.length === 0) {
-      return res.status(401).json({ error: 'Invalid credentials' });
+      res.status(401).json({ error: 'Invalid credentials' });
+      return;
     }
 
     const user = result.rows[0];
@@ -171,20 +217,23 @@ router.post('/login', async (req, res) => {
     // Check if password_hash exists
     if (!user.password_hash) {
       console.error('User found but password_hash is missing:', user.id);
-      return res.status(500).json({ error: 'User account error. Please contact support.' });
+      res.status(500).json({ error: 'User account error. Please contact support.' });
+      return;
     }
 
-    // Verify password
+    // Verify password (async operation - protected by overall timeout)
     let isValid;
     try {
       isValid = await bcrypt.compare(password, user.password_hash);
     } catch (bcryptError) {
       console.error('Bcrypt comparison error:', bcryptError);
-      return res.status(500).json({ error: 'Password verification failed' });
+      res.status(500).json({ error: 'Password verification failed' });
+      return;
     }
 
     if (!isValid) {
-      return res.status(401).json({ error: 'Invalid credentials' });
+      res.status(401).json({ error: 'Invalid credentials' });
+      return;
     }
 
     // Generate JWT with longer expiration if "remember me" is checked
@@ -198,13 +247,28 @@ router.post('/login', async (req, res) => {
       );
     } catch (jwtError) {
       console.error('JWT signing error:', jwtError);
-      return res.status(500).json({ error: 'Failed to generate authentication token' });
+      res.status(500).json({ error: 'Failed to generate authentication token' });
+      return;
     }
 
+    // Success - send response
+    if (res.headersSent) {
+      return; // Safety check - shouldn't happen
+    }
+    
     res.json({
       user: { id: user.id, email: user.email, name: user.name },
       token,
     });
+  };
+  
+  // Execute login operation with overall timeout
+  try {
+    await withOperationTimeout(
+      loginOperation(),
+      OPERATION_TIMEOUT,
+      'Login operation'
+    );
   } catch (error) {
     // Log full error details for debugging
     console.error('Login error details:', {
@@ -226,14 +290,46 @@ router.post('/login', async (req, res) => {
       });
     }
     
-    // Check for database connection errors
+    // Handle overall operation timeout (this catches any hanging operations)
+    if (error.operationTimeout || (error.code === 'ETIMEDOUT' && error.message?.includes('Login operation'))) {
+      console.error('Login operation timeout:', {
+        message: error.message,
+        timeoutMs: OPERATION_TIMEOUT,
+        hasPool: !!pool,
+        hasJwtSecret: !!process.env.JWT_SECRET,
+      });
+      
+      if (!res.headersSent) {
+        return res.status(504).json({ 
+          error: error.message || 'Login request timed out. The server took too long to respond. This may indicate that your Neon database is paused. Please check https://console.neon.tech and try again.',
+          code: 'TIMEOUT',
+        });
+      }
+      return;
+    }
+    
+    // Check for database connection/query timeouts (from connection.js wrapper)
     if (error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT' || 
         error.message?.includes('timeout') || error.message?.includes('Connection terminated') ||
-        error.message?.includes('connect ECONNREFUSED')) {
-      return res.status(503).json({ 
-        error: 'Database connection failed. Please check your DATABASE_URL and ensure your Neon project is not paused.',
+        error.message?.includes('connect ECONNREFUSED') || error.message?.includes('Database operation timeout') ||
+        error.message?.includes('Neon database')) {
+      console.error('Database connection/timeout error:', {
         code: error.code,
+        message: error.message,
       });
+      
+      if (!res.headersSent) {
+        // Provide helpful error message about Neon pause
+        const errorMessage = error.message?.includes('Neon') 
+          ? error.message
+          : 'Database connection failed or timed out. Your Neon database may be paused - please check https://console.neon.tech and resume it if needed. If it was paused, wait a few seconds after resuming and try again.';
+        
+        return res.status(503).json({ 
+          error: errorMessage,
+          code: error.code || 'ETIMEDOUT',
+        });
+      }
+      return;
     }
     
     // Check for PostgreSQL-specific errors

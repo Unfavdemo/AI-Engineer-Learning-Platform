@@ -43,11 +43,16 @@ function createPool() {
   }
   
   // Add statement_timeout to connection string if not already present
+  // Use shorter timeout for serverless to prevent gateway timeouts
   let connectionString = process.env.DATABASE_URL;
+  const statementTimeout = process.env.VERCEL ? 3000 : 5000; // 3s for serverless, 5s for local
   if (!connectionString.includes('statement_timeout')) {
     const separator = connectionString.includes('?') ? '&' : '?';
-    connectionString = `${connectionString}${separator}statement_timeout=5000`;
+    connectionString = `${connectionString}${separator}statement_timeout=${statementTimeout}`;
   }
+  
+  // More aggressive timeouts for serverless environments
+  const connectionTimeout = process.env.VERCEL ? 2000 : 3000; // 2s for serverless, 3s for local
   
   _pool = new Pool({
     connectionString: connectionString,
@@ -55,7 +60,7 @@ function createPool() {
     // Connection pool settings optimized for serverless
     max: process.env.VERCEL ? 1 : 20, // Use 1 connection in serverless to avoid connection limits
     idleTimeoutMillis: 30000, // Close idle clients after 30 seconds
-    connectionTimeoutMillis: 3000, // 3 seconds - fail very fast if DB is unreachable
+    connectionTimeoutMillis: connectionTimeout, // Aggressive timeout for serverless
     // For serverless, we want to close connections quickly
     ...(process.env.VERCEL && {
       allowExitOnIdle: true,
@@ -65,7 +70,8 @@ function createPool() {
   // Set up event listeners
   setupPoolListeners(_pool);
   
-  // Wrap query method to always enforce timeout (5 seconds max)
+  // Wrap query method to always enforce timeout (aggressive for serverless)
+  // This wraps BOTH connection establishment AND query execution
   const originalQuery = _pool.query.bind(_pool);
   _pool.query = function(text, params, callback) {
     // Handle callback-style queries
@@ -74,23 +80,65 @@ function createPool() {
       params = undefined;
     }
     
-    const QUERY_TIMEOUT = 5000; // 5 seconds max for any query
+    // More aggressive timeout for serverless to prevent gateway timeouts
+    // Total time: 2s (connection) + 3s (query) = 5s max for serverless
+    // This ensures we fail before client timeout (8s) and well before Vercel timeout (60s)
+    const QUERY_TIMEOUT = process.env.VERCEL ? 4000 : 5000; // 4s for serverless (includes connection), 5s for local
     
     const queryPromise = originalQuery(text, params, callback);
     
-    // If callback is provided, pg handles it differently - just return the promise
+    // If callback is provided, wrap it with timeout handling
     if (callback) {
+      let timeoutId;
+      let completed = false;
+      
+      const wrappedCallback = (err, result) => {
+        if (completed) return;
+        completed = true;
+        if (timeoutId) clearTimeout(timeoutId);
+        callback(err, result);
+      };
+      
+      timeoutId = setTimeout(() => {
+        if (!completed) {
+          completed = true;
+          const timeoutError = new Error(`Database operation timeout after ${QUERY_TIMEOUT}ms. Connection establishment or query execution took too long. Your Neon database may be paused - please check https://console.neon.tech and resume it if needed.`);
+          timeoutError.code = 'ETIMEDOUT';
+          wrappedCallback(timeoutError, null);
+        }
+      }, QUERY_TIMEOUT);
+      
+      // Wrap the promise chain to handle timeout
+      if (queryPromise && typeof queryPromise.then === 'function') {
+        queryPromise
+          .then(result => wrappedCallback(null, result))
+          .catch(err => wrappedCallback(err, null));
+      }
+      
       return queryPromise;
     }
     
     // Wrap in timeout for promise-based queries
+    // This timeout covers BOTH connection establishment AND query execution
     const timeoutPromise = new Promise((_, reject) => {
       setTimeout(() => {
-        reject(new Error(`Query timeout after ${QUERY_TIMEOUT}ms - database may be unreachable or paused`));
+        const timeoutError = new Error(`Database operation timeout after ${QUERY_TIMEOUT}ms. Connection establishment or query execution took too long. Your Neon database may be paused - please check https://console.neon.tech and resume it if needed.`);
+        timeoutError.code = 'ETIMEDOUT';
+        reject(timeoutError);
       }, QUERY_TIMEOUT);
     });
     
-    return Promise.race([queryPromise, timeoutPromise]);
+    return Promise.race([queryPromise, timeoutPromise]).catch(err => {
+      // Enhance error with timeout code if it's a timeout
+      if (err.message?.includes('timeout') || err.code === 'ETIMEDOUT') {
+        err.code = 'ETIMEDOUT';
+        // Preserve the enhanced error message
+        if (!err.message.includes('Neon database')) {
+          err.message = `Database operation timeout: ${err.message}`;
+        }
+      }
+      throw err;
+    });
   };
   
   return _pool;
