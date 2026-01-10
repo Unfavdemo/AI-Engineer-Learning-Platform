@@ -1,0 +1,52 @@
+{
+  "name": "ai-engineer-learning-platform",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "AI Engineer Learning Platform - Full Stack Application",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:client\" \"npm run dev:server\"",
+    "dev:client": "vite",
+    "dev:server": "node --watch server/src/index.js",
+    "build": "npm run build:client && npm run build:server",
+    "build:client": "vite build",
+    "build:server": "echo 'Server uses JavaScript, no build needed'",
+    "build:vercel": "npm run build:client",
+    "start": "node server/dist/index.js",
+    "db:migrate": "tsx server/db/migrate.js",
+    "db:seed": "tsx server/db/seed.ts",
+    "test:connections": "node server/test-connections.js",
+    "test:login": "node test-login.js"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.14.2",
+    "axios": "^1.6.2",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "jsonwebtoken": "^9.0.2",
+    "lucide-react": "^0.562.0",
+    "mammoth": "^1.11.0",
+    "multer": "^1.4.5-lts.1",
+    "openai": "^4.20.1",
+    "pdf-parse": "^2.4.5",
+    "pg": "^8.11.3",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.20.0",
+    "serverless-http": "^3.2.0",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.43",
+    "@types/react-dom": "^18.2.17",
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.16",
+    "concurrently": "^8.2.2",
+    "postcss": "^8.4.32",
+    "tailwindcss": "^3.3.6",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.8"
+  }
+}
