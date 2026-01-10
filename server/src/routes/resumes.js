@@ -97,12 +97,9 @@ const getOpenAIClient = () => {
   return new OpenAI({ apiKey });
 };
 
-// Get available model
-const getModel = async (openai) => {
-  const envModel = process.env.OPENAI_MODEL;
-  if (envModel) return envModel;
-  if (process.env.DETECTED_MODEL) return process.env.DETECTED_MODEL;
-  return 'gpt-4o-mini';
+// Get model - fixed to gpt-4o-mini (configurable via env var if needed)
+const getModel = () => {
+  return process.env.OPENAI_MODEL || 'gpt-4o-mini';
 };
 
 // Schema validation
@@ -152,7 +149,7 @@ router.post('/generate-project-bullets', async (req, res) => {
 
     // Generate bullets using AI
     const openai = getOpenAIClient();
-    const model = await getModel(openai);
+    const model = getModel();
 
     const systemPrompt = `You are an expert resume writer specializing in technical roles. Generate 3-5 compelling resume bullet points for a project. Each bullet should:
 1. Start with a strong action verb (Architected, Implemented, Optimized, etc.)
@@ -463,7 +460,7 @@ router.post('/feedback', async (req, res) => {
     }
 
     const openai = getOpenAIClient();
-    const model = await getModel(openai);
+    const model = getModel();
 
     const systemPrompt = `You are an expert resume reviewer for technical roles. Provide constructive feedback on a resume. Focus on:
 1. Technical content and achievements
@@ -540,7 +537,7 @@ router.post('/recommendations', async (req, res) => {
     }
 
     const openai = getOpenAIClient();
-    const model = await getModel(openai);
+    const model = getModel();
 
     const systemPrompt = `You are an expert resume reviewer for technical roles. Analyze the resume and provide specific, actionable edits that can be applied directly.
 

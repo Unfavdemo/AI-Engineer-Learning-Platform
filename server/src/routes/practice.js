@@ -14,12 +14,9 @@ const getOpenAIClient = () => {
   return new OpenAI({ apiKey });
 };
 
-// Get available model
-const getModel = async (openai) => {
-  const envModel = process.env.OPENAI_MODEL;
-  if (envModel) return envModel;
-  if (process.env.DETECTED_MODEL) return process.env.DETECTED_MODEL;
-  return 'gpt-4o-mini';
+// Get model - fixed to gpt-4o-mini (configurable via env var if needed)
+const getModel = () => {
+  return process.env.OPENAI_MODEL || 'gpt-4o-mini';
 };
 
 // Schema validation
@@ -43,7 +40,7 @@ router.post('/analyze-response', async (req, res) => {
     }
 
     const openai = getOpenAIClient();
-    const model = await getModel(openai);
+    const model = getModel();
 
     const systemPrompt = `You are an expert technical interviewer evaluating a candidate's response to an interview question. Provide constructive, actionable feedback.
 

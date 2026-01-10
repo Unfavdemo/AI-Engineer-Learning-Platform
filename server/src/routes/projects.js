@@ -308,17 +308,8 @@ router.get('/:id/recommendations', async (req, res) => {
       apiKey: process.env.OPENAI_API_KEY,
     });
 
-    // Detect available model
-    const MODEL_PRIORITY = ['gpt-4o', 'gpt-4-turbo', 'gpt-4', 'gpt-4o-mini', 'gpt-3.5-turbo'];
-    let model = process.env.OPENAI_MODEL || process.env.DETECTED_MODEL || 'gpt-3.5-turbo';
-    
-    // Try to use the best available model
-    for (const testModel of MODEL_PRIORITY) {
-      if (process.env.OPENAI_MODEL === testModel || process.env.DETECTED_MODEL === testModel) {
-        model = testModel;
-        break;
-      }
-    }
+    // Use fixed model - gpt-4o-mini (configurable via env var if needed)
+    const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 
     const projectTechStack = project.tech_stack || [];
     const completionRate = project.milestone_count > 0 

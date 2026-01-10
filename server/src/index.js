@@ -22,57 +22,6 @@ const __dirname = dirname(__filename);
 const projectRoot = join(__dirname, '../..');
 dotenv.config({ path: join(projectRoot, '.env') });
 
-// Initialize OpenAI model detection on startup
-async function initializeModelDetection() {
-  if (!process.env.OPENAI_API_KEY) {
-    console.log('⚠️  OPENAI_API_KEY not set, skipping model detection');
-    return;
-  }
-
-  try {
-    const openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    });
-
-    const MODEL_PRIORITY = [
-      'gpt-4o',
-      'gpt-4-turbo',
-      'gpt-4',
-      'gpt-4o-mini',
-      'gpt-3.5-turbo',
-    ];
-
-    console.log('🔍 Detecting available OpenAI models on startup...');
-    
-    for (const model of MODEL_PRIORITY) {
-      try {
-        await openai.chat.completions.create({
-          model: model,
-          messages: [{ role: 'user', content: 'test' }],
-          max_tokens: 1,
-        });
-        console.log(`✅ Detected available model: ${model}`);
-        // Store in a way that the AI route can access
-        process.env.DETECTED_MODEL = model;
-        return;
-      } catch (error) {
-        if (error.status === 404 || error.code === 'model_not_found' || 
-            error.message?.toLowerCase().includes('model') ||
-            error.message?.toLowerCase().includes('not found')) {
-          continue;
-        }
-        throw error;
-      }
-    }
-    
-    console.log('⚠️  No models detected, will use gpt-3.5-turbo as fallback');
-    process.env.DETECTED_MODEL = 'gpt-3.5-turbo';
-  } catch (error) {
-    console.error('❌ Error detecting models:', error.message);
-    process.env.DETECTED_MODEL = 'gpt-3.5-turbo';
-  }
-}
-
 const app = express();
 const PORT = process.env.PORT || 5000;
 
@@ -121,15 +70,13 @@ function startServer(port, maxAttempts = 10, attempt = 0) {
 
   const server = createServer(app);
   
-  server.listen(port, async () => {
+  server.listen(port, () => {
     console.log(`🚀 Server running on http://localhost:${port}`);
     if (port !== parseInt(PORT)) {
       console.log(`⚠️  Port ${PORT} was in use, using port ${port} instead`);
       console.log(`⚠️  Update your .env file with PORT=${port} or stop the process using port ${PORT}`);
     }
-    
-    // Initialize model detection after server starts
-    await initializeModelDetection();
+    console.log(`🤖 Using OpenAI model: ${process.env.OPENAI_MODEL || 'gpt-4o-mini'}`);
   });
 
   server.on('error', (err) => {

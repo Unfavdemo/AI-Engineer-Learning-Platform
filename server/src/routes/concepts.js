@@ -14,12 +14,9 @@ const getOpenAIClient = () => {
   return new OpenAI({ apiKey });
 };
 
-// Get available model (reuse logic from ai.js)
-const getModel = async (openai) => {
-  const envModel = process.env.OPENAI_MODEL;
-  if (envModel) return envModel;
-  if (process.env.DETECTED_MODEL) return process.env.DETECTED_MODEL;
-  return 'gpt-4o-mini'; // Default for concept generation
+// Get model - fixed to gpt-4o-mini (configurable via env var if needed)
+const getModel = () => {
+  return process.env.OPENAI_MODEL || 'gpt-4o-mini';
 };
 
 // Schema validation
@@ -140,7 +137,7 @@ router.post('/generate', async (req, res) => {
     const { topic, category } = generateConceptSchema.parse(req.body);
 
     const openai = getOpenAIClient();
-    const model = await getModel(openai);
+    const model = getModel();
 
     const systemPrompt = `You are an expert technical educator helping engineers understand complex concepts. Generate a comprehensive concept explanation in JSON format with the following structure:
 
