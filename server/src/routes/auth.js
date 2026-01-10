@@ -112,11 +112,7 @@ function withTimeout(promise, timeoutMs, errorMessage) {
 
 // Login
 router.post('/login', async (req, res) => {
-  // Overall timeout for entire login operation (10 seconds max for serverless)
-  // This prevents hitting the 60s Vercel gateway timeout
-  const OPERATION_TIMEOUT = process.env.VERCEL ? 10000 : 15000;
-  
-  const loginOperation = async () => {
+  try {
     // Check if database is configured
     if (!pool) {
       return res.status(503).json({ 
@@ -224,15 +220,19 @@ router.post('/login', async (req, res) => {
       return res.status(500).json({ error: 'Failed to generate authentication token' });
     }
 
+<<<<<<< HEAD
     // Check if response was already sent (early return cases)
     if (res.headersSent) {
       return;
     }
     
+=======
+>>>>>>> c4df9a4bd49becfc8d5497d7ab0f55a288bec059
     res.json({
       user: { id: user.id, email: user.email, name: user.name },
       token,
     });
+<<<<<<< HEAD
   };
   
   // Wrap entire login operation with timeout
@@ -262,6 +262,9 @@ router.post('/login', async (req, res) => {
     }
     
     // Handle other errors (ZodError, database errors, etc.)
+=======
+  } catch (error) {
+>>>>>>> c4df9a4bd49becfc8d5497d7ab0f55a288bec059
     // Log full error details for debugging
     console.error('Login error details:', {
       name: error.name,
@@ -282,6 +285,7 @@ router.post('/login', async (req, res) => {
       });
     }
     
+<<<<<<< HEAD
     // Check for database connection errors (including query timeouts)
     if (error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT' || 
         error.message?.includes('timeout') || error.message?.includes('Connection terminated') ||
@@ -298,6 +302,16 @@ router.post('/login', async (req, res) => {
         });
       }
       return;
+=======
+    // Check for database connection errors
+    if (error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT' || 
+        error.message?.includes('timeout') || error.message?.includes('Connection terminated') ||
+        error.message?.includes('connect ECONNREFUSED')) {
+      return res.status(503).json({ 
+        error: 'Database connection failed. Please check your DATABASE_URL and ensure your Neon project is not paused.',
+        code: error.code,
+      });
+>>>>>>> c4df9a4bd49becfc8d5497d7ab0f55a288bec059
     }
     
     // Check for PostgreSQL-specific errors
