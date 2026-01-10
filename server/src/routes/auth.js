@@ -224,11 +224,44 @@ router.post('/login', async (req, res) => {
       return res.status(500).json({ error: 'Failed to generate authentication token' });
     }
 
+    // Check if response was already sent (early return cases)
+    if (res.headersSent) {
+      return;
+    }
+    
     res.json({
       user: { id: user.id, email: user.email, name: user.name },
       token,
     });
+  };
+  
+  // Wrap entire login operation with timeout
+  try {
+    await withTimeout(
+      loginOperation(),
+      OPERATION_TIMEOUT,
+      `Login operation timed out after ${OPERATION_TIMEOUT}ms - please try again`
+    );
   } catch (error) {
+    // Handle timeout specifically
+    if (error.message?.includes('timeout') || error.message?.includes('timed out')) {
+      console.error('Login operation timeout:', {
+        message: error.message,
+        timeoutMs: OPERATION_TIMEOUT,
+        hasPool: !!pool,
+        hasJwtSecret: !!process.env.JWT_SECRET,
+      });
+      
+      if (!res.headersSent) {
+        return res.status(504).json({ 
+          error: 'Login request timed out. The server took too long to respond. Please try again or check if your database is accessible.',
+          code: 'TIMEOUT',
+        });
+      }
+      return;
+    }
+    
+    // Handle other errors (ZodError, database errors, etc.)
     // Log full error details for debugging
     console.error('Login error details:', {
       name: error.name,
@@ -249,14 +282,22 @@ router.post('/login', async (req, res) => {
       });
     }
     
-    // Check for database connection errors
+    // Check for database connection errors (including query timeouts)
     if (error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT' || 
         error.message?.includes('timeout') || error.message?.includes('Connection terminated') ||
-        error.message?.includes('connect ECONNREFUSED')) {
-      return res.status(503).json({ 
-        error: 'Database connection failed. Please check your DATABASE_URL and ensure your Neon project is not paused.',
+        error.message?.includes('connect ECONNREFUSED') || error.message?.includes('Database query timeout')) {
+      console.error('Database connection/timeout error:', {
         code: error.code,
+        message: error.message,
       });
+      
+      if (!res.headersSent) {
+        return res.status(503).json({ 
+          error: 'Database connection failed or timed out. Please check your DATABASE_URL and ensure your Neon project is not paused. If it was paused, wait a few seconds and try again.',
+          code: error.code || 'ETIMEDOUT',
+        });
+      }
+      return;
     }
     
     // Check for PostgreSQL-specific errors
