@@ -361,6 +361,7 @@ router.post('/login', async (req, res) => {
 
     // Find user (async operation - protected by overall timeout)
     let result;
+    let queryStartTime = Date.now();
     try {
       // Query user directly (timeout is handled by pool wrapper - 4 seconds max for serverless)
       // This includes connection establishment + query execution
@@ -368,13 +369,11 @@ router.post('/login', async (req, res) => {
         'SELECT id, email, password_hash, name FROM users WHERE email = $1',
         [email]
       );
+      let queryEndTime = Date.now();
+      console.log(`Database query execution time: ${queryEndTime - queryStartTime}ms`);
     } catch (dbError) {
-      console.error('Database query error in login:', {
-        message: dbError.message,
-        code: dbError.code,
-        name: dbError.name,
-        stack: dbError.stack,
-      });
+      let queryEndTime = Date.now();
+      console.error(`Database query failed after ${queryEndTime - queryStartTime}ms`, dbError);
       
       // Check for database connection errors
       if (dbError.code === 'ECONNREFUSED' || dbError.code === 'ETIMEDOUT' || 
@@ -604,13 +603,15 @@ router.get('/verify', authenticateToken, async (req, res) => {
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'User not found' });
     }
-    
+
+    const user = result.rows[0];
     res.json({
-      user: result.rows[0],
-      valid: true,
+      id: user.id,
+      email: user.email,
+      name: user.name,
     });
   } catch (error) {
-    console.error('Verify token error:', error);
+    console.error('Error verifying token:', error);
     res.status(500).json({ error: 'Failed to verify token' });
   }
 });
