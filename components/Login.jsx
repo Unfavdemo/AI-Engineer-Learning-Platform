@@ -41,15 +41,15 @@ export function Login() {
       
       navigate('/home');
     } catch (err) {
-      // Log full error for debugging
-      console.error('Login error details:', {
-        error: err,
-        message: err.message,
-        response: err.response,
-        responseData: err.response?.data,
-        status: err.response?.status,
-        code: err.code,
-      });
+      // Log full error for debugging - log each property separately for better visibility
+      console.error('=== LOGIN ERROR DETECTED ===');
+      console.error('Error Message:', err.message || 'No message');
+      console.error('Error Code:', err.code || 'No code');
+      console.error('Error Name:', err.name || 'No name');
+      console.error('Response Status:', err.response?.status || 'No status');
+      console.error('Response Data:', err.response?.data || 'No response data');
+      console.error('Full Error Object:', err);
+      console.error('================================');
       
       // Extract error message from various possible error formats
       let errorMessage = 'An error occurred. Please try again.';
@@ -64,10 +64,12 @@ export function Login() {
         const data = err.response.data;
         const status = err.response.status;
         
-        if (status === 500) {
-          errorMessage = 'Server error. The server encountered an unexpected error. Please try again later.';
+        if (status === 504) {
+          errorMessage = 'Request timed out. The server took too long to respond. Your database may be paused or experiencing issues. Please check https://console.neon.tech and try again.';
         } else if (status === 503) {
-          errorMessage = 'Service unavailable. The server is temporarily unavailable. Please try again later.';
+          errorMessage = 'Service unavailable. The server is temporarily unavailable. This may indicate your Neon database is paused or unreachable. Please check https://console.neon.tech and try again.';
+        } else if (status === 500) {
+          errorMessage = 'Server error. The server encountered an unexpected error. Please try again later.';
         } else if (status === 401) {
           errorMessage = 'Invalid email or password. Please check your credentials and try again.';
         } else if (status === 400) {
