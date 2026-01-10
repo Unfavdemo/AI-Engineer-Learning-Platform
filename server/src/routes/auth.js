@@ -100,16 +100,6 @@ router.post('/register', async (req, res) => {
   }
 });
 
-// Helper function to wrap operations with timeout
-function withTimeout(promise, timeoutMs, errorMessage) {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) => 
-      setTimeout(() => reject(new Error(errorMessage || `Operation timed out after ${timeoutMs}ms`)), timeoutMs)
-    )
-  ]);
-}
-
 // Login
 router.post('/login', async (req, res) => {
   try {
@@ -134,15 +124,14 @@ router.post('/login', async (req, res) => {
 
     const { email, password } = loginSchema.parse(req.body);
 
-    // Find user with timeout protection
+    // Find user
     let result;
     try {
-      // Query user directly (timeout is handled by pool wrapper - 3 seconds max for serverless)
-      // Wrap in additional timeout for extra safety
-      result = await withTimeout(
-        pool.query('SELECT id, email, password_hash, name FROM users WHERE email = $1', [email]),
-        4000, // 4 seconds max for DB query (should complete much faster)
-        'Database query timeout - database may be unreachable or paused'
+      // Query user directly (timeout is handled by pool wrapper - 5 seconds max)
+      // Skip connection test to reduce latency - if DB is down, query will fail fast
+      result = await pool.query(
+        'SELECT id, email, password_hash, name FROM users WHERE email = $1',
+        [email]
       );
     } catch (dbError) {
       console.error('Database query error in login:', {
@@ -185,20 +174,12 @@ router.post('/login', async (req, res) => {
       return res.status(500).json({ error: 'User account error. Please contact support.' });
     }
 
-    // Verify password with timeout protection (bcrypt can be slow on serverless)
+    // Verify password
     let isValid;
     try {
-      // Bcrypt compare should be fast (<1s), but add timeout for safety
-      isValid = await withTimeout(
-        bcrypt.compare(password, user.password_hash),
-        3000, // 3 seconds max for password verification
-        'Password verification timeout'
-      );
+      isValid = await bcrypt.compare(password, user.password_hash);
     } catch (bcryptError) {
       console.error('Bcrypt comparison error:', bcryptError);
-      if (bcryptError.message?.includes('timeout')) {
-        return res.status(503).json({ error: 'Password verification timed out. Please try again.' });
-      }
       return res.status(500).json({ error: 'Password verification failed' });
     }
 
@@ -225,24 +206,6 @@ router.post('/login', async (req, res) => {
       token,
     });
   } catch (error) {
-    // Handle timeout specifically (from withTimeout wrapper)
-    if (error.message?.includes('timeout') || error.message?.includes('timed out') || error.code === 'ETIMEDOUT') {
-      console.error('Login operation timeout:', {
-        message: error.message,
-        code: error.code,
-        hasPool: !!pool,
-        hasJwtSecret: !!process.env.JWT_SECRET,
-      });
-      
-      if (!res.headersSent) {
-        return res.status(504).json({ 
-          error: 'Login request timed out. The server took too long to respond. Please try again or check if your database is accessible.',
-          code: 'TIMEOUT',
-        });
-      }
-      return;
-    }
-    
     // Log full error details for debugging
     console.error('Login error details:', {
       name: error.name,
@@ -263,22 +226,14 @@ router.post('/login', async (req, res) => {
       });
     }
     
-    // Check for database connection errors (including query timeouts)
+    // Check for database connection errors
     if (error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT' || 
         error.message?.includes('timeout') || error.message?.includes('Connection terminated') ||
-        error.message?.includes('connect ECONNREFUSED') || error.message?.includes('Database query timeout')) {
-      console.error('Database connection/timeout error:', {
+        error.message?.includes('connect ECONNREFUSED')) {
+      return res.status(503).json({ 
+        error: 'Database connection failed. Please check your DATABASE_URL and ensure your Neon project is not paused.',
         code: error.code,
-        message: error.message,
       });
-      
-      if (!res.headersSent) {
-        return res.status(503).json({ 
-          error: 'Database connection failed or timed out. Please check your DATABASE_URL and ensure your Neon project is not paused. If it was paused, wait a few seconds and try again.',
-          code: error.code || 'ETIMEDOUT',
-        });
-      }
-      return;
     }
     
     // Check for PostgreSQL-specific errors
