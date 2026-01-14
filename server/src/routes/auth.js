@@ -56,9 +56,10 @@ router.post('/register', async (req, res) => {
     (process.env.NODE_ENV === 'production' && !process.env.PORT)
   );
   
-  // Overall operation timeout: 7 seconds for serverless (less than client timeout of 8s)
-  // This ensures we fail before the client times out and way before Vercel's 60s timeout
-  const OPERATION_TIMEOUT = isServerless ? 7000 : 15000;
+  // Overall operation timeout: 5 seconds for serverless (much less than client timeout of 8s)
+  // This ensures we fail well before the client times out and way before Vercel's 60s timeout
+  // Reduced from 7s to 5s to be more aggressive
+  const OPERATION_TIMEOUT = isServerless ? 5000 : 15000;
   
   // Wrap entire register operation with timeout
   const registerOperation = async () => {
@@ -255,7 +256,8 @@ router.post('/register', async (req, res) => {
         message: error.message,
       });
       
-      if (!res.headersSent) {
+      if (!res.headersSent && !responseSent) {
+        responseSent = true;
         const errorMessage = error.message?.includes('Neon') 
           ? error.message
           : 'Database connection failed or timed out. Your Neon database may be paused - please check https://console.neon.tech and resume it if needed. If it was paused, wait a few seconds after resuming and try again.';
@@ -301,6 +303,9 @@ router.post('/register', async (req, res) => {
 
 // Login
 router.post('/login', async (req, res) => {
+  const routeStartTime = Date.now();
+  console.log(`[LOGIN] Route handler called at ${routeStartTime}`);
+  
   // Detect serverless environment for timeout configuration
   const isServerless = !!(
     process.env.VERCEL || 
@@ -311,9 +316,13 @@ router.post('/login', async (req, res) => {
     (process.env.NODE_ENV === 'production' && !process.env.PORT)
   );
   
-  // Overall operation timeout: 7 seconds for serverless (less than client timeout of 8s)
-  // This ensures we fail before the client times out and way before Vercel's 60s timeout
-  const OPERATION_TIMEOUT = isServerless ? 7000 : 15000;
+  console.log(`[LOGIN] Environment detection - isServerless: ${isServerless}, VERCEL: ${!!process.env.VERCEL}, VERCEL_URL: ${!!process.env.VERCEL_URL}, NODE_ENV: ${process.env.NODE_ENV}`);
+  
+  // Overall operation timeout: 5 seconds for serverless (much less than client timeout of 8s)
+  // This ensures we fail well before the client times out and way before Vercel's 60s timeout
+  // Reduced from 7s to 5s to be more aggressive
+  const OPERATION_TIMEOUT = isServerless ? 5000 : 15000;
+  console.log(`[LOGIN] Configured timeout: ${OPERATION_TIMEOUT}ms`);
   
   // Wrap entire login operation with timeout
   const loginOperation = async () => {
@@ -466,16 +475,35 @@ router.post('/login', async (req, res) => {
   };
   
   // Execute login operation with overall timeout
+  // Add a safety timeout that ALWAYS sends a response, even if something goes wrong
   const overallStartTime = Date.now();
+  let responseSent = false;
+  
+  // Safety timeout - ensures we ALWAYS respond, even if the operation hangs
+  const safetyTimeout = setTimeout(() => {
+    if (!responseSent && !res.headersSent) {
+      responseSent = true;
+      console.error(`[LOGIN] Safety timeout triggered after ${Date.now() - overallStartTime}ms - forcing response`);
+      return res.status(504).json({ 
+        error: 'Login request timed out. The server took too long to respond. Please check your database connection and try again.',
+        code: 'TIMEOUT',
+        safetyTimeout: true,
+      });
+    }
+  }, OPERATION_TIMEOUT + 1000); // Add 1 second buffer to safety timeout
+  
   try {
     await withOperationTimeout(
       loginOperation(),
       OPERATION_TIMEOUT,
       'Login operation'
     );
+    clearTimeout(safetyTimeout);
+    responseSent = true;
     const overallEndTime = Date.now();
     console.log(`[LOGIN] Overall operation (including timeout wrapper) took ${overallEndTime - overallStartTime}ms`);
   } catch (error) {
+    clearTimeout(safetyTimeout);
     // Log full error details for debugging
     console.error('Login error details:', {
       name: error.name,
@@ -509,7 +537,8 @@ router.post('/login', async (req, res) => {
         isServerless,
       });
       
-      if (!res.headersSent) {
+      if (!res.headersSent && !responseSent) {
+        responseSent = true;
         return res.status(504).json({ 
           error: error.message || 'Login request timed out. The server took too long to respond. This may indicate that your Neon database is paused. Please check https://console.neon.tech and try again.',
           code: 'TIMEOUT',
@@ -565,11 +594,12 @@ router.post('/login', async (req, res) => {
       : 'Failed to login. Please try again later.';
     
     // Make sure we haven't already sent a response
-    if (res.headersSent) {
+    if (res.headersSent || responseSent) {
       console.error('Response already sent, cannot send error response for login');
       return;
     }
     
+    responseSent = true;
     try {
       const errorResponse = { 
         error: errorMessage,
@@ -594,7 +624,8 @@ router.post('/login', async (req, res) => {
         originalError: error.message,
       });
       // Last resort - try to end the response
-      if (!res.headersSent) {
+      if (!res.headersSent && !responseSent) {
+        responseSent = true;
         try {
           res.status(500).end('Internal server error');
         } catch (e) {

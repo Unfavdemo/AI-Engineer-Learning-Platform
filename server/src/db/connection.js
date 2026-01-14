@@ -103,54 +103,67 @@ function createPool() {
     );
     
     // More aggressive timeout for serverless to prevent gateway timeouts
-    // Total time: 2s (connection) + 3s (query) = 5s max for serverless
+    // Reduced to 3 seconds to ensure we fail well before Vercel's 60s timeout
     // This ensures we fail before client timeout (8s) and well before Vercel timeout (60s)
-    const QUERY_TIMEOUT = isServerless ? 4000 : 5000; // 4s for serverless (includes connection), 5s for local
+    const QUERY_TIMEOUT = isServerless ? 3000 : 5000; // 3s for serverless (includes connection), 5s for local
     
+    // Start timeout BEFORE calling query - this ensures timeout fires even if query hangs
+    let timeoutId;
+    let queryCompleted = false;
+    const timeoutError = new Error(`Database operation timeout after ${QUERY_TIMEOUT}ms. Connection establishment or query execution took too long. Your Neon database may be paused - please check https://console.neon.tech and resume it if needed.`);
+    timeoutError.code = 'ETIMEDOUT';
+    
+    // Create timeout promise that will reject after QUERY_TIMEOUT
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = setTimeout(() => {
+        if (!queryCompleted) {
+          queryCompleted = true;
+          console.error(`[DB] Query timeout triggered after ${QUERY_TIMEOUT}ms`);
+          reject(timeoutError);
+        }
+      }, QUERY_TIMEOUT);
+    });
+    
+    // Now call the actual query
     const queryPromise = originalQuery(text, params, callback);
+    
+    // Mark as completed when query finishes (success or error)
+    const wrappedQueryPromise = Promise.resolve(queryPromise)
+      .then(result => {
+        if (!queryCompleted) {
+          queryCompleted = true;
+          if (timeoutId) clearTimeout(timeoutId);
+        }
+        return result;
+      })
+      .catch(err => {
+        if (!queryCompleted) {
+          queryCompleted = true;
+          if (timeoutId) clearTimeout(timeoutId);
+        }
+        throw err;
+      });
     
     // If callback is provided, wrap it with timeout handling
     if (callback) {
-      let timeoutId;
-      let completed = false;
-      
       const wrappedCallback = (err, result) => {
-        if (completed) return;
-        completed = true;
-        if (timeoutId) clearTimeout(timeoutId);
+        if (!queryCompleted) {
+          queryCompleted = true;
+          if (timeoutId) clearTimeout(timeoutId);
+        }
         callback(err, result);
       };
       
-      timeoutId = setTimeout(() => {
-        if (!completed) {
-          completed = true;
-          const timeoutError = new Error(`Database operation timeout after ${QUERY_TIMEOUT}ms. Connection establishment or query execution took too long. Your Neon database may be paused - please check https://console.neon.tech and resume it if needed.`);
-          timeoutError.code = 'ETIMEDOUT';
-          wrappedCallback(timeoutError, null);
-        }
-      }, QUERY_TIMEOUT);
-      
-      // Wrap the promise chain to handle timeout
-      if (queryPromise && typeof queryPromise.then === 'function') {
-        queryPromise
-          .then(result => wrappedCallback(null, result))
-          .catch(err => wrappedCallback(err, null));
-      }
+      // Race the query against the timeout for callback-based queries too
+      Promise.race([wrappedQueryPromise, timeoutPromise])
+        .then(result => wrappedCallback(null, result))
+        .catch(err => wrappedCallback(err, null));
       
       return queryPromise;
     }
     
-    // Wrap in timeout for promise-based queries
-    // This timeout covers BOTH connection establishment AND query execution
-    const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => {
-        const timeoutError = new Error(`Database operation timeout after ${QUERY_TIMEOUT}ms. Connection establishment or query execution took too long. Your Neon database may be paused - please check https://console.neon.tech and resume it if needed.`);
-        timeoutError.code = 'ETIMEDOUT';
-        reject(timeoutError);
-      }, QUERY_TIMEOUT);
-    });
-    
-    return Promise.race([queryPromise, timeoutPromise]).catch(err => {
+    // Use Promise.race to ensure timeout fires even if query hangs
+    return Promise.race([wrappedQueryPromise, timeoutPromise]).catch(err => {
       // Enhance error with timeout code if it's a timeout
       if (err.message?.includes('timeout') || err.code === 'ETIMEDOUT') {
         err.code = 'ETIMEDOUT';
