@@ -317,6 +317,9 @@ router.post('/login', async (req, res) => {
   
   // Wrap entire login operation with timeout
   const loginOperation = async () => {
+    const operationStartTime = Date.now();
+    console.log(`[LOGIN] Operation started at ${operationStartTime}, timeout: ${OPERATION_TIMEOUT}ms, isServerless: ${isServerless}`);
+    
     // Early validation checks (synchronous - no timeout needed)
     // Check if database is configured
     if (!pool) {
@@ -415,10 +418,14 @@ router.post('/login', async (req, res) => {
 
     // Verify password (async operation - protected by overall timeout)
     let isValid;
+    const bcryptStartTime = Date.now();
     try {
       isValid = await bcrypt.compare(password, user.password_hash);
+      const bcryptEndTime = Date.now();
+      console.log(`[LOGIN] Bcrypt comparison took ${bcryptEndTime - bcryptStartTime}ms`);
     } catch (bcryptError) {
-      console.error('Bcrypt comparison error:', bcryptError);
+      const bcryptEndTime = Date.now();
+      console.error(`[LOGIN] Bcrypt comparison failed after ${bcryptEndTime - bcryptStartTime}ms:`, bcryptError);
       res.status(500).json({ error: 'Password verification failed' });
       return;
     }
@@ -444,6 +451,10 @@ router.post('/login', async (req, res) => {
     }
 
     // Success - send response
+    const operationEndTime = Date.now();
+    const totalTime = operationEndTime - operationStartTime;
+    console.log(`[LOGIN] Operation completed successfully in ${totalTime}ms`);
+    
     if (res.headersSent) {
       return; // Safety check - shouldn't happen
     }
@@ -455,12 +466,15 @@ router.post('/login', async (req, res) => {
   };
   
   // Execute login operation with overall timeout
+  const overallStartTime = Date.now();
   try {
     await withOperationTimeout(
       loginOperation(),
       OPERATION_TIMEOUT,
       'Login operation'
     );
+    const overallEndTime = Date.now();
+    console.log(`[LOGIN] Overall operation (including timeout wrapper) took ${overallEndTime - overallStartTime}ms`);
   } catch (error) {
     // Log full error details for debugging
     console.error('Login error details:', {
@@ -484,11 +498,15 @@ router.post('/login', async (req, res) => {
     
     // Handle overall operation timeout (this catches any hanging operations)
     if (error.operationTimeout || (error.code === 'ETIMEDOUT' && error.message?.includes('Login operation'))) {
-      console.error('Login operation timeout:', {
+      const overallEndTime = Date.now();
+      const totalTime = overallEndTime - overallStartTime;
+      console.error(`[LOGIN] Operation timeout after ${totalTime}ms (configured timeout: ${OPERATION_TIMEOUT}ms):`, {
         message: error.message,
         timeoutMs: OPERATION_TIMEOUT,
+        actualTime: totalTime,
         hasPool: !!pool,
         hasJwtSecret: !!process.env.JWT_SECRET,
+        isServerless,
       });
       
       if (!res.headersSent) {
