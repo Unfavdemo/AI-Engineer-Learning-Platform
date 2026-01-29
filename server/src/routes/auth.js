@@ -56,10 +56,8 @@ router.post('/register', async (req, res) => {
     (process.env.NODE_ENV === 'production' && !process.env.PORT)
   );
   
-  // Overall operation timeout: 5 seconds for serverless (much less than client timeout of 8s)
-  // This ensures we fail well before the client times out and way before Vercel's 60s timeout
-  // Reduced from 7s to 5s to be more aggressive
-  const OPERATION_TIMEOUT = isServerless ? 5000 : 15000;
+  // Overall operation timeout: 15s for serverless (client auth timeout is 20s)
+  const OPERATION_TIMEOUT = isServerless ? 15000 : 15000;
   
   // Wrap entire register operation with timeout
   const registerOperation = async () => {
@@ -318,10 +316,8 @@ router.post('/login', async (req, res) => {
   
   console.log(`[LOGIN] Environment detection - isServerless: ${isServerless}, VERCEL: ${!!process.env.VERCEL}, VERCEL_URL: ${!!process.env.VERCEL_URL}, NODE_ENV: ${process.env.NODE_ENV}`);
   
-  // Overall operation timeout: 5 seconds for serverless (much less than client timeout of 8s)
-  // This ensures we fail well before the client times out and way before Vercel's 60s timeout
-  // Reduced from 7s to 5s to be more aggressive
-  const OPERATION_TIMEOUT = isServerless ? 5000 : 15000;
+  // Overall operation timeout: 15s for serverless (client auth timeout is 20s, so we respond before client aborts)
+  const OPERATION_TIMEOUT = isServerless ? 15000 : 15000;
   console.log(`[LOGIN] Configured timeout: ${OPERATION_TIMEOUT}ms`);
   
   // Wrap entire login operation with timeout

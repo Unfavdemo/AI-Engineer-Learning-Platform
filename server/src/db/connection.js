@@ -55,16 +55,15 @@ function createPool() {
   );
   
   // Add statement_timeout to connection string if not already present
-  // Use shorter timeout for serverless to prevent gateway timeouts
   let connectionString = process.env.DATABASE_URL;
-  const statementTimeout = isServerless ? 3000 : 5000; // 3s for serverless, 5s for local
+  const statementTimeout = isServerless ? 8000 : 5000; // 8s for serverless (Neon cold start), 5s for local
   if (!connectionString.includes('statement_timeout')) {
     const separator = connectionString.includes('?') ? '&' : '?';
     connectionString = `${connectionString}${separator}statement_timeout=${statementTimeout}`;
   }
   
-  // More aggressive timeouts for serverless environments
-  const connectionTimeout = isServerless ? 2000 : 3000; // 2s for serverless, 3s for local
+  // Connection timeout allows Neon cold start to complete
+  const connectionTimeout = isServerless ? 6000 : 3000; // 6s for serverless, 3s for local
   
   _pool = new Pool({
     connectionString: connectionString,
@@ -102,10 +101,8 @@ function createPool() {
       (process.env.NODE_ENV === 'production' && !process.env.PORT)
     );
     
-    // More aggressive timeout for serverless to prevent gateway timeouts
-    // Reduced to 3 seconds to ensure we fail well before Vercel's 60s timeout
-    // This ensures we fail before client timeout (8s) and well before Vercel timeout (60s)
-    const QUERY_TIMEOUT = isServerless ? 3000 : 5000; // 3s for serverless (includes connection), 5s for local
+    // Query timeout: 8s for serverless (includes connection + Neon cold start), 5s for local
+    const QUERY_TIMEOUT = isServerless ? 8000 : 5000;
     
     // Start timeout BEFORE calling query - this ensures timeout fires even if query hangs
     let timeoutId;

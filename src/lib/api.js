@@ -25,7 +25,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 8000, // 8 second timeout - must be longer than DB query timeout (5s) + overhead
+  timeout: 15000, // 15 second default; auth uses 20s via request config
   validateStatus: function (status) {
     // Don't throw for status codes less than 500
     return status < 500;
@@ -91,10 +91,13 @@ api.interceptors.response.use(
   }
 );
 
+// Longer timeout for auth (login/register) - allows cold starts (Neon, serverless) to complete
+const AUTH_TIMEOUT_MS = 20000; // 20 seconds
+
 // Auth API
 export const authAPI = {
   register: async (email, password, name, rememberMe = false) => {
-    const response = await api.post('/auth/register', { email, password, name, rememberMe });
+    const response = await api.post('/auth/register', { email, password, name, rememberMe }, { timeout: AUTH_TIMEOUT_MS });
     if (response.data.token) {
       localStorage.setItem('token', response.data.token);
       localStorage.setItem('user', JSON.stringify(response.data.user));
@@ -106,7 +109,7 @@ export const authAPI = {
   },
   login: async (email, password, rememberMe = false) => {
     try {
-      const response = await api.post('/auth/login', { email, password, rememberMe });
+      const response = await api.post('/auth/login', { email, password, rememberMe }, { timeout: AUTH_TIMEOUT_MS });
       if (response.data.token) {
         localStorage.setItem('token', response.data.token);
         localStorage.setItem('user', JSON.stringify(response.data.user));
