@@ -91,8 +91,8 @@ api.interceptors.response.use(
   }
 );
 
-// Longer timeout for auth (login/register) - allows cold starts (Neon, serverless) to complete
-const AUTH_TIMEOUT_MS = 20000; // 20 seconds
+// Longer timeout for auth - Vercel cold start + Neon wake can take 25–35s on first request
+const AUTH_TIMEOUT_MS = import.meta.env.PROD ? 40000 : 20000; // 40s production, 20s dev
 
 // Auth API
 export const authAPI = {
